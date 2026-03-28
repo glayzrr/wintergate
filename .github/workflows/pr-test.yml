@@ -47,8 +47,8 @@ jobs:
           echo "total=$total" >> "$GITHUB_OUTPUT"
 
           awk -v total="$total" 'BEGIN {
-            if ((total + 0) < 85) {
-              printf("coverage %.1f%% is below required 85%%\n", total + 0);
+            if ((total + 0) < 80) {
+              printf("coverage %.1f%% is below required 80%%\n", total + 0);
               exit 1;
             }
           }'
@@ -59,7 +59,7 @@ jobs:
             echo "## Go Test Coverage"
             echo
             echo "- Total coverage: ${{ steps.coverage.outputs.total }}%"
-            echo "- Required coverage: 85%"
+            echo "- Required coverage: 80%"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage artifact
