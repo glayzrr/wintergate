@@ -1,0 +1,101 @@
+name: Codex PR Review
+
+on:
+  workflow_run:
+    workflows:
+      - PR Test
+    types:
+      - completed
+
+concurrency:
+  group: codex-pr-review-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Resolve pull request context
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prs = context.payload.workflow_run.pull_requests || [];
+            if (prs.length === 0) {
+              core.setFailed("No pull request found in workflow_run payload.");
+              return;
+            }
+
+            const prNumber = prs[0].number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            const shouldReview = !pr.draft && !pr.head.repo.fork;
+            core.setOutput("number", String(pr.number));
+            core.setOutput("base_ref", pr.base.ref);
+            core.setOutput("base_sha", pr.base.sha);
+            core.setOutput("head_sha", pr.head.sha);
+            core.setOutput("should_review", String(shouldReview));
+
+      - name: Skip review when PR is not eligible
+        if: steps.pr.outputs.should_review != 'true'
+        run: echo "Skipping Codex review for draft or fork PR."
+
+      - name: Checkout PR merge ref
+        if: steps.pr.outputs.should_review == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/merge
+
+      - name: Pre-fetch base and head refs
+        if: steps.pr.outputs.should_review == 'true'
+        run: |
+          git fetch --no-tags origin \
+            ${{ steps.pr.outputs.base_ref }} \
+            +refs/pull/${{ steps.pr.outputs.number }}/head
+
+      - name: Run Codex review
+        if: steps.pr.outputs.should_review == 'true'
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          safety-strategy: drop-sudo
+          prompt: |
+            Review ONLY this PR diff and report:
+            1) potential bugs
+            2) security risks
+            3) regression risks
+            4) missing tests
+
+            Use severity labels [high|medium|low] per finding.
+            Keep it concise and actionable.
+
+            The PR test workflow already passed go test and coverage gate >= 85%.
+
+            PR number: #${{ steps.pr.outputs.number }}
+            Base SHA: ${{ steps.pr.outputs.base_sha }}
+            Head SHA: ${{ steps.pr.outputs.head_sha }}
+
+      - name: Post review comment
+        if: steps.pr.outputs.should_review == 'true' && steps.codex.outputs.final-message != ''
+        uses: actions/github-script@v7
+        env:
+          REVIEW_MESSAGE: ${{ steps.codex.outputs.final-message }}
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number("${{ steps.pr.outputs.number }}"),
+              body: process.env.REVIEW_MESSAGE,
+            });
