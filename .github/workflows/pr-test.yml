@@ -1,0 +1,70 @@
+name: PR Test
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: pr-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout PR head commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run go test with coverage
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Enforce total coverage threshold
+        id: coverage
+        shell: bash
+        run: |
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')"
+
+          if [[ -z "$total" ]]; then
+            echo "failed to resolve total coverage from coverage.out"
+            exit 1
+          fi
+
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+
+          awk -v total="$total" 'BEGIN {
+            if ((total + 0) < 80) {
+              printf("coverage %.1f%% is below required 80%%\n", total + 0);
+              exit 1;
+            }
+          }'
+
+      - name: Write workflow summary
+        run: |
+          {
+            echo "## Go Test Coverage"
+            echo
+            echo "- Total coverage: ${{ steps.coverage.outputs.total }}%"
+            echo "- Required coverage: 80%"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: error

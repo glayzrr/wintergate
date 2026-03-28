@@ -28,7 +28,7 @@ func processData() ([]byte, error) {
 ```Go
 // 하위 에러를 래핑하여 문맥 추가
 if err != nil {
-	return errors.Join(ErrSomething, fmt.Errorf("read reserver response body: %w", err))
+	return fmt.Errorf("read reserver response body: %w", err)
 }
 ```
 
@@ -115,7 +115,39 @@ if err != nil {
 + 파일 내 const 블록 묶음: 특정 기능이나 단일 파일 내부에서만 사용하는 상수는 분리하지 않습니다. 대신 해당 파일의 상단에 `const (...)` 블록을 생성하여 관련된 상수들을 논리적으로 묶어둡니다.
 
 ## 테스트
-테스트 파일 매핑: 테스트 코드는 대상이 되는 파일과 정확히 동일한 경로에 위치하며, 파일명 끝에 `_test.go`를 붙여야 합니다. (예: `alarm.go`의 테스트는 `alarm_test.go`)
++ 테스트 코드는 대상이 되는 파일과 정확히 동일한 경로에 위치하며, 파일명 끝에 `_test.go`를 붙여야 합니다. (예: `alarm.go`의 테스트는 `alarm_test.go`)
++ 테스트 커버리지는 80%를 이상으로 해야 합니다.
 
+# 주석
 
+## Core Tools
++ `go doc` 및 `go install golang.org/x/tools/cmd/godoc@latest`를 통해 추출 가능한 형식을 표준으로 사용합니다.
++ `gopls`가 해석하여 툴팁으로 제공하는 형식을 준수해야 합니다.
 
+## Naming & Syntax Convention
++ 모든 공개 요소의 주석은 반드시 해당 식별자의 이름으로 시작합니다.
++ 주석은 대문자로 시작하고 마침표로 끝나는 완전한 문장으로 작성합니다.
++ 첫 번째 문장은 해당 요소의 기능을 완벽하게 요약해야 하며, 문서 목록의 요약문으로 사용됩니다.
+
+## Formatting 
++ 불렛 포인트(`*`, `-`, `+`) 또는 숫자(`1.`)를 사용하며, 목록 전후에는 반드시 빈 줄을 삽입합니다.
++ `[텍스트](URL)` 또는 `[식별자]` 형식을 사용하여 외부 문서나 내부 패키지 요소를 참조합니다.
++ 주석 내에서 탭(`\t`) 또는 공백 4칸으로 들여쓰기하여 코드 예시를 작성합니다.
+
+```go
+// Service는 네트워크 사이드카의 핵심 제어 로직을 담당합니다.
+//
+// 이 구조체는 모든 메서드에서 Thread-safe를 보장합니다.
+// 자세한 내용은 [Config] 구조체를 참조하십시오.
+type Service struct {
+    // ID는 서비스의 고유 식별자입니다.
+    ID string
+}
+
+// Run은 사이드카 서비스를 시작합니다.
+//
+// 지정된 포트에서 수신 대기하며 에러 발생 시 즉시 반환합니다.
+func (s *Service) Run(port int) error {
+    // 구현 로직
+    return nil
+}
