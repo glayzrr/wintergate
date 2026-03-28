@@ -28,7 +28,7 @@ func processData() ([]byte, error) {
 ```Go
 // 하위 에러를 래핑하여 문맥 추가
 if err != nil {
-	return errors.Join(ErrSomething, fmt.Errorf("read reserver response body: %w", err))
+	return fmt.Errorf("read reserver response body: %w", err)
 }
 ```
 
@@ -117,5 +117,6 @@ if err != nil {
 ## 테스트
 테스트 파일 매핑: 테스트 코드는 대상이 되는 파일과 정확히 동일한 경로에 위치하며, 파일명 끝에 `_test.go`를 붙여야 합니다. (예: `alarm.go`의 테스트는 `alarm_test.go`)
 
+# 주석
 
 
