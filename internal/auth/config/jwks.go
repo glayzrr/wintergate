@@ -1,14 +1,15 @@
-package client
+package config
 
 import (
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"strings"
 )
 
-const supportedAlgorithm = "RS256"
+const supportedJWTAlgorithm = "RS256"
 
 type document struct {
 	Keys []key `json:"keys"`
@@ -23,14 +24,23 @@ type key struct {
 	Use       string `json:"use"`
 }
 
+func newDocumentFromBytes(payload []byte) (document, error) {
+	var keyDocument document
+	if err := json.Unmarshal(payload, &keyDocument); err != nil {
+		return document{}, fmt.Errorf("%w: decode jwks payload: %w", ErrInvalidKeySet, err)
+	}
+
+	return keyDocument, nil
+}
+
 func (d document) publicKeys() (map[string]*rsa.PublicKey, error) {
 	if len(d.Keys) == 0 {
 		return nil, fmt.Errorf("%w: keys is required", ErrInvalidKeySet)
 	}
 
 	publicKeys := make(map[string]*rsa.PublicKey)
-	for _, key := range d.Keys {
-		publicKey, err := key.publicKey()
+	for _, keyValue := range d.Keys {
+		publicKey, err := keyValue.publicKey()
 		if err != nil {
 			return nil, err
 		}
@@ -39,11 +49,11 @@ func (d document) publicKeys() (map[string]*rsa.PublicKey, error) {
 			continue
 		}
 
-		if _, exists := publicKeys[key.KeyID]; exists {
-			return nil, fmt.Errorf("%w: duplicate kid %q", ErrInvalidKeySet, key.KeyID)
+		if _, exists := publicKeys[keyValue.KeyID]; exists {
+			return nil, fmt.Errorf("%w: duplicate kid %q", ErrInvalidKeySet, keyValue.KeyID)
 		}
 
-		publicKeys[key.KeyID] = publicKey
+		publicKeys[keyValue.KeyID] = publicKey
 	}
 
 	if len(publicKeys) == 0 {
@@ -62,7 +72,7 @@ func (k key) publicKey() (*rsa.PublicKey, error) {
 		return nil, nil
 	}
 
-	if k.Algorithm != "" && k.Algorithm != supportedAlgorithm {
+	if k.Algorithm != "" && k.Algorithm != supportedJWTAlgorithm {
 		return nil, nil
 	}
 
