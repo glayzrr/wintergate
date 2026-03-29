@@ -11,6 +11,8 @@ import (
 	"time"
 
 	authconfig "sidecargo/internal/auth/config"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // ProviderConfig 키 조회와 캐시 동작을 설정합니다.
@@ -31,6 +33,7 @@ type Provider struct {
 	refreshedAt time.Time
 
 	refreshMu sync.Mutex
+	sfGroup   singleflight.Group
 }
 
 // NewProvider 메모리 캐시를 사용하는 Provider를 생성합니다.
@@ -109,21 +112,22 @@ func (p *Provider) PublicKey(ctx context.Context, kid string) (*rsa.PublicKey, e
 
 // Refresh 최신 키 세트 응답을 가져와 캐시를 교체합니다.
 func (p *Provider) Refresh(ctx context.Context) error {
-	p.refreshMu.Lock()
-	defer p.refreshMu.Unlock()
+	_, err, _ := p.sfGroup.Do(JWKSRefreshSingleFlightKey, func() (interface{}, error) {
+		keys, fetchErr := p.fetcher.fetch(ctx)
+		if fetchErr != nil {
+			return nil, fetchErr
+		}
 
-	keys, err := p.fetcher.fetch(ctx)
-	if err != nil {
-		return err
-	}
+		p.mu.Lock()
+		defer p.mu.Unlock()
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
+		p.keys = keys
+		p.refreshedAt = p.now()
 
-	p.keys = keys
-	p.refreshedAt = p.now()
+		return nil, nil
+	})
 
-	return nil
+	return err
 }
 
 func (p *Provider) cachedKey(kid string) (*rsa.PublicKey, bool, bool) {

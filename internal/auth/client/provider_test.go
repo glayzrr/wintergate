@@ -276,6 +276,129 @@ func TestProviderRefreshReturnsErrorWhenRequestTimesOut(t *testing.T) {
 	}
 }
 
+func TestProviderRefreshDeduplicatesConcurrentCalls(t *testing.T) {
+	privateKey := generateRSAKey(t)
+	body := mustMarshalDocument(t, newRSAKey("key-1", &privateKey.PublicKey))
+	service := newTestKeyService(t, body)
+	service.setResponse(http.StatusOK, body, 50*time.Millisecond)
+	server := httptest.NewServer(service)
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL, time.Second, time.Minute)
+
+	results := runConcurrentRefreshes(provider, 24)
+	for index, err := range results {
+		if err != nil {
+			t.Fatalf("results[%d] returned error: %v", index, err)
+		}
+	}
+
+	if service.requests() != 1 {
+		t.Fatalf("requests = %d, want %d", service.requests(), 1)
+	}
+}
+
+func TestProviderRefreshDeduplicatesConcurrentFailures(t *testing.T) {
+	service := newTestKeyService(t, `{"error":"failed"}`)
+	service.setResponse(http.StatusInternalServerError, `{"error":"failed"}`, 50*time.Millisecond)
+	server := httptest.NewServer(service)
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL, time.Second, time.Minute)
+
+	results := runConcurrentRefreshes(provider, 24)
+	for index, err := range results {
+		if err == nil {
+			t.Fatalf("results[%d] returned nil error", index)
+		}
+
+		if !errors.Is(err, ErrKeyFetchFailed) {
+			t.Fatalf("results[%d] error = %v, want ErrKeyFetchFailed", index, err)
+		}
+	}
+
+	if service.requests() != 1 {
+		t.Fatalf("requests = %d, want %d", service.requests(), 1)
+	}
+}
+
+func TestProviderPublicKeyDeduplicatesConcurrentExpiredRefresh(t *testing.T) {
+	firstPrivateKey := generateRSAKey(t)
+	secondPrivateKey := generateRSAKey(t)
+	service := newTestKeyService(t, mustMarshalDocument(t, newRSAKey("key-1", &firstPrivateKey.PublicKey)))
+	server := httptest.NewServer(service)
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL, time.Second, time.Minute)
+	now := time.Unix(300, 0)
+	provider.now = func() time.Time {
+		return now
+	}
+
+	initialKey, err := provider.PublicKey(context.Background(), "key-1")
+	if err != nil {
+		t.Fatalf("PublicKey returned error: %v", err)
+	}
+
+	if !equalPublicKeys(initialKey, &firstPrivateKey.PublicKey) {
+		t.Fatal("initialKey does not match the first served key")
+	}
+
+	service.setResponse(http.StatusOK, mustMarshalDocument(t, newRSAKey("key-1", &secondPrivateKey.PublicKey)), 50*time.Millisecond)
+	now = now.Add(time.Minute + time.Second)
+
+	results := runConcurrentPublicKeys(provider, "key-1", 24)
+	for index, result := range results {
+		if result.err != nil {
+			t.Fatalf("results[%d] returned error: %v", index, result.err)
+		}
+
+		if !equalPublicKeys(result.key, &secondPrivateKey.PublicKey) {
+			t.Fatalf("results[%d] returned stale key", index)
+		}
+	}
+
+	if service.requests() != 2 {
+		t.Fatalf("requests = %d, want %d", service.requests(), 2)
+	}
+}
+
+func TestProviderPublicKeyReturnsCachedKeyWhenConcurrentRefreshFails(t *testing.T) {
+	privateKey := generateRSAKey(t)
+	service := newTestKeyService(t, mustMarshalDocument(t, newRSAKey("key-1", &privateKey.PublicKey)))
+	server := httptest.NewServer(service)
+	defer server.Close()
+
+	provider := newTestProvider(t, server.URL, time.Second, time.Minute)
+	now := time.Unix(400, 0)
+	provider.now = func() time.Time {
+		return now
+	}
+
+	cachedKey, err := provider.PublicKey(context.Background(), "key-1")
+	if err != nil {
+		t.Fatalf("PublicKey returned error: %v", err)
+	}
+
+	service.setResponse(http.StatusInternalServerError, `{"error":"failed"}`, 50*time.Millisecond)
+	now = now.Add(time.Minute + time.Second)
+
+	results := runConcurrentPublicKeys(provider, "key-1", 24)
+	for index, result := range results {
+		if result.err != nil {
+			t.Fatalf("results[%d] returned error: %v", index, result.err)
+		}
+
+		if !equalPublicKeys(result.key, cachedKey) {
+			t.Fatalf("results[%d] did not return the cached key", index)
+		}
+	}
+
+	if service.requests() != 2 {
+		t.Fatalf("requests = %d, want %d", service.requests(), 2)
+	}
+}
+
 type testKeyService struct {
 	bodyValue  string
 	delay      time.Duration
@@ -346,6 +469,69 @@ func newTestProvider(t *testing.T, url string, requestTimeout time.Duration, ref
 	}
 
 	return provider
+}
+
+type publicKeyResult struct {
+	err error
+	key *rsa.PublicKey
+}
+
+func runConcurrentRefreshes(provider *Provider, workers int) []error {
+	start := make(chan struct{})
+	results := make(chan error, workers)
+	var waitGroup sync.WaitGroup
+
+	waitGroup.Add(workers)
+	for index := 0; index < workers; index++ {
+		go func() {
+			defer waitGroup.Done()
+			<-start
+
+			results <- provider.Refresh(context.Background())
+		}()
+	}
+
+	close(start)
+	waitGroup.Wait()
+	close(results)
+
+	collected := make([]error, 0, workers)
+	for result := range results {
+		collected = append(collected, result)
+	}
+
+	return collected
+}
+
+func runConcurrentPublicKeys(provider *Provider, keyID string, workers int) []publicKeyResult {
+	start := make(chan struct{})
+	results := make(chan publicKeyResult, workers)
+	var waitGroup sync.WaitGroup
+
+	waitGroup.Add(workers)
+	for index := 0; index < workers; index++ {
+		go func() {
+			defer waitGroup.Done()
+			<-start
+
+			keyValue, err := provider.PublicKey(context.Background(), keyID)
+			results <- publicKeyResult{
+				err: err,
+				key: keyValue,
+			}
+		}()
+	}
+
+	close(start)
+	waitGroup.Wait()
+	close(results)
+
+	collected := make([]publicKeyResult, 0, workers)
+	for result := range results {
+		collected = append(collected, result)
+	}
+
+	return collected
 }
 
 func generateRSAKey(t *testing.T) *rsa.PrivateKey {
