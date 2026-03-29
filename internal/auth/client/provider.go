@@ -13,14 +13,14 @@ import (
 	authconfig "sidecargo/internal/auth/config"
 )
 
-// ProviderConfig ProviderConfig는 키 조회와 캐시 동작을 설정합니다.
+// ProviderConfig 키 조회와 캐시 동작을 설정합니다.
 type ProviderConfig struct {
 	URL             string
 	RequestTimeout  time.Duration
 	RefreshInterval time.Duration
 }
 
-// Provider Provider는 auth-service 엔드포인트에서 RSA 공개키를 조회하고 캐시합니다.
+// Provider auth-service 엔드포인트에서 RSA 공개키를 조회하고 캐시합니다.
 type Provider struct {
 	fetcher         fetcher
 	refreshInterval time.Duration
@@ -33,7 +33,7 @@ type Provider struct {
 	refreshMu sync.Mutex
 }
 
-// NewProvider NewProvider는 메모리 캐시를 사용하는 Provider를 생성합니다.
+// NewProvider 메모리 캐시를 사용하는 Provider를 생성합니다.
 func NewProvider(cfg ProviderConfig) (*Provider, error) {
 	trimmedURL := strings.TrimSpace(cfg.URL)
 	if trimmedURL == "" {
@@ -70,7 +70,7 @@ func NewProvider(cfg ProviderConfig) (*Provider, error) {
 	}, nil
 }
 
-// NewProviderFromEnvConfig NewProviderFromEnvConfig는 인증 환경 설정으로 Provider를 생성합니다.
+// NewProviderFromEnvConfig 인증 환경 설정으로 Provider를 생성합니다.
 func NewProviderFromEnvConfig(cfg authconfig.EnvConfig) (*Provider, error) {
 	return NewProvider(ProviderConfig{
 		URL:             cfg.AuthJWKSURL,
@@ -79,7 +79,7 @@ func NewProviderFromEnvConfig(cfg authconfig.EnvConfig) (*Provider, error) {
 	})
 }
 
-// PublicKey PublicKey는 주어진 kid에 해당하는 RSA 공개키를 반환합니다.
+// PublicKey 주어진 kid에 해당하는 RSA 공개키를 반환합니다.
 func (p *Provider) PublicKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	trimmedKeyID := strings.TrimSpace(kid)
 	if trimmedKeyID == "" {
@@ -107,7 +107,7 @@ func (p *Provider) PublicKey(ctx context.Context, kid string) (*rsa.PublicKey, e
 	return refreshedKey, nil
 }
 
-// Refresh Refresh는 최신 키 세트 응답을 가져와 캐시를 교체합니다.
+// Refresh 최신 키 세트 응답을 가져와 캐시를 교체합니다.
 func (p *Provider) Refresh(ctx context.Context) error {
 	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
