@@ -15,22 +15,11 @@ type Registerer struct {
 }
 
 // NewRegisterer 설정 스냅샷 등록용 Registerer를 생성합니다.
-func NewRegisterer(
-	authRegistry *authconfig.Registry,
-	routingRegistry *routeconfig.Registry,
-) (*Registerer, error) {
-	if authRegistry == nil {
-		return nil, fmt.Errorf("%w: auth registry is required", ErrNilAuthRegistry)
-	}
-
-	if routingRegistry == nil {
-		return nil, fmt.Errorf("%w: routing registry is required", ErrNilRoutingRegistry)
-	}
-
+func NewRegisterer() *Registerer {
 	return &Registerer{
-		authRegistry:    authRegistry,
-		routingRegistry: routingRegistry,
-	}, nil
+		authRegistry:    authconfig.NewRegistry(),
+		routingRegistry: routeconfig.NewRegistry(),
+	}
 }
 
 // Register 설정 스냅샷 전체를 내부 저장소에 반영합니다.

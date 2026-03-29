@@ -6,45 +6,56 @@ import (
 	"os"
 
 	configapi "sidecargo/api/config"
-	authconfig "sidecargo/internal/auth/config"
-	routeconfig "sidecargo/internal/route/config"
 
 	"github.com/gin-gonic/gin"
 )
 
 const defaultListenAddress = ":1313"
 
+var (
+	runMain = run
+	logError = func(msg string, args ...any) {
+		slog.Error(msg, args...)
+	}
+	exitProcess = os.Exit
+	buildRouter = newRouter
+	runServer = func(router *gin.Engine, addr string) error {
+		return router.Run(addr)
+	}
+)
+
 func main() {
-	if err := run(); err != nil {
-		slog.Error(logRunFailed, "error", err)
-		os.Exit(1)
+	if err := runMain(); err != nil {
+		logError(logRunFailed, "error", err)
+		exitProcess(1)
 	}
 }
 
 func run() error {
-	authRegistry := authconfig.NewRegistry()
-	routingRegistry := routeconfig.NewRegistry()
-
-	registerer, err := configapi.NewRegisterer(authRegistry, routingRegistry)
+	router, err := buildRouter()
 	if err != nil {
-		return fmt.Errorf("create config registerer: %w", err)
+		return fmt.Errorf("build router: %w", err)
 	}
 
-	handler, err := configapi.NewHandler(registerer)
-	if err != nil {
-		return fmt.Errorf("create config handler: %w", err)
-	}
-
-	router := gin.New()
-	router.Use(gin.Recovery())
-
-	handler.RegisterRoutes(router)
-
-	if err := router.Run(listenAddress()); err != nil {
+	if err := runServer(router, listenAddress()); err != nil {
 		return fmt.Errorf("run gin server: %w", err)
 	}
 
 	return nil
+}
+
+func newRouter() (*gin.Engine, error) {
+	registerer := configapi.NewRegisterer()
+	handler, err := configapi.NewHandler(registerer)
+	if err != nil {
+		return nil, fmt.Errorf("create config handler: %w", err)
+	}
+
+	router := gin.New()
+	router.Use(gin.Recovery())
+	handler.RegisterRoutes(router)
+
+	return router, nil
 }
 
 func listenAddress() string {

@@ -11,9 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	authconfig "sidecargo/internal/auth/config"
-	routeconfig "sidecargo/internal/route/config"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -34,12 +31,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 	privateKey := generateRSAKey(t)
 	jwksPayload := mustJWKSJSON("key-1", &privateKey.PublicKey)
 
-	authRegistry := authconfig.NewRegistry()
-	routingRegistry := routeconfig.NewRegistry()
-	registerer, err := NewRegisterer(authRegistry, routingRegistry)
-	if err != nil {
-		t.Fatalf("NewRegisterer returned error: %v", err)
-	}
+	registerer := NewRegisterer()
 
 	handler, err := NewHandler(registerer)
 	if err != nil {
@@ -63,7 +55,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
 	}
 
-	publicKey, err := authRegistry.PublicKey("key-1")
+	publicKey, err := registerer.authRegistry.PublicKey("key-1")
 	if err != nil {
 		t.Fatalf("PublicKey returned error: %v", err)
 	}
@@ -72,7 +64,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 		t.Fatal("publicKey does not match the registered key")
 	}
 
-	authRuntimeConfig, authConfigFound := authRegistry.Snapshot()
+	authRuntimeConfig, authConfigFound := registerer.authRegistry.Snapshot()
 	if !authConfigFound {
 		t.Fatal("Snapshot did not return auth config")
 	}
@@ -81,7 +73,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
 	}
 
-	service, found := routingRegistry.Service("/orders")
+	service, found := registerer.routingRegistry.Service("/orders")
 	if !found {
 		t.Fatal("Service did not find /orders")
 	}
@@ -90,7 +82,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 		t.Fatalf("service = %q, want %q", service, "order-service")
 	}
 
-	routingRuntimeConfig, routingConfigFound := routingRegistry.Snapshot()
+	routingRuntimeConfig, routingConfigFound := registerer.routingRegistry.Snapshot()
 	if !routingConfigFound {
 		t.Fatal("Snapshot did not return routing config")
 	}
@@ -107,11 +99,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 func TestHandlerPutSnapshotReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registerer, err := NewRegisterer(authconfig.NewRegistry(), routeconfig.NewRegistry())
-	if err != nil {
-		t.Fatalf("NewRegisterer returned error: %v", err)
-	}
-
+	registerer := NewRegisterer()
 	handler, err := NewHandler(registerer)
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
