@@ -9,16 +9,18 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// EnvConfig 환경 파일에서 읽은 인증 설정을 보관합니다.
 type EnvConfig struct {
-	AuthPublicKeyURL             string
-	AuthPublicKeyRequestTimeout  time.Duration
-	AuthPublicKeyRefreshInterval time.Duration
-	JWTAlgorithm                 string
-	JWTAudience                  string
-	JWTClockSkew                 time.Duration
-	JWTIssuer                    string
+	AuthJWKSURL             string
+	AuthJWKSRequestTimeout  time.Duration
+	AuthJWKSRefreshInterval time.Duration
+	JWTAlgorithm            string
+	JWTAudience             string
+	JWTClockSkew            time.Duration
+	JWTIssuer               string
 }
 
+// LoadEnvConfig 지정한 환경 파일에서 인증 설정을 읽어옵니다.
 func LoadEnvConfig(path string) (EnvConfig, error) {
 	if strings.TrimSpace(path) == "" {
 		path = defaultEnvPath
@@ -29,7 +31,7 @@ func LoadEnvConfig(path string) (EnvConfig, error) {
 		return EnvConfig{}, fmt.Errorf("%w: read %s: %v", ErrInvalidConfig, path, err)
 	}
 
-	authPublicKeyURL, err := requireString(values, envAuthPublicKeyURL)
+	authJWKSURL, err := requireString(values, envAuthJWKSURL)
 	if err != nil {
 		return EnvConfig{}, err
 	}
@@ -49,12 +51,12 @@ func LoadEnvConfig(path string) (EnvConfig, error) {
 		return EnvConfig{}, err
 	}
 
-	authPublicKeyRequestTimeout, err := requireDuration(values, envAuthPublicKeyRequestTimeout)
+	authJWKSRequestTimeout, err := requireDuration(values, envAuthJWKSRequestTimeout)
 	if err != nil {
 		return EnvConfig{}, err
 	}
 
-	authPublicKeyRefreshInterval, err := requireDuration(values, envAuthPublicKeyRefreshInterval)
+	authJWKSRefreshInterval, err := requireDuration(values, envAuthJWKSRefreshInterval)
 	if err != nil {
 		return EnvConfig{}, err
 	}
@@ -65,13 +67,13 @@ func LoadEnvConfig(path string) (EnvConfig, error) {
 	}
 
 	cfg := EnvConfig{
-		AuthPublicKeyURL:             authPublicKeyURL,
-		JWTIssuer:                    jwtIssuer,
-		JWTAudience:                  jwtAudience,
-		JWTAlgorithm:                 jwtAlgorithm,
-		AuthPublicKeyRequestTimeout:  authPublicKeyRequestTimeout,
-		AuthPublicKeyRefreshInterval: authPublicKeyRefreshInterval,
-		JWTClockSkew:                 jwtClockSkew,
+		AuthJWKSURL:             authJWKSURL,
+		JWTIssuer:               jwtIssuer,
+		JWTAudience:             jwtAudience,
+		JWTAlgorithm:            jwtAlgorithm,
+		AuthJWKSRequestTimeout:  authJWKSRequestTimeout,
+		AuthJWKSRefreshInterval: authJWKSRefreshInterval,
+		JWTClockSkew:            jwtClockSkew,
 	}
 
 	if cfg.JWTAlgorithm != supportedJWTAlgorithm {

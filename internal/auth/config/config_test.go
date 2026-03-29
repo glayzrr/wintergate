@@ -11,13 +11,13 @@ import (
 
 func TestLoadEnvConfig(t *testing.T) {
 	envPath := writeEnvFile(t, map[string]string{
-		envAuthPublicKeyURL:             "http://auth-service.local/public.pem",
-		envAuthPublicKeyRequestTimeout:  "3s",
-		envAuthPublicKeyRefreshInterval: "10m",
-		envJWTAlgorithm:                 supportedJWTAlgorithm,
-		envJWTAudience:                  "sidecargo",
-		envJWTClockSkew:                 "45s",
-		envJWTIssuer:                    "auth-service",
+		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
+		envAuthJWKSRequestTimeout:  "3s",
+		envAuthJWKSRefreshInterval: "10m",
+		envJWTAlgorithm:            supportedJWTAlgorithm,
+		envJWTAudience:             "wintergate",
+		envJWTClockSkew:            "45s",
+		envJWTIssuer:               "auth-service",
 	})
 
 	cfg, err := LoadEnvConfig(envPath)
@@ -25,24 +25,24 @@ func TestLoadEnvConfig(t *testing.T) {
 		t.Fatalf("LoadEnvConfig returned error: %v", err)
 	}
 
-	if cfg.AuthPublicKeyURL != "http://auth-service.local/public.pem" {
-		t.Fatalf("AuthPublicKeyURL = %q, want %q", cfg.AuthPublicKeyURL, "http://auth-service.local/public.pem")
+	if cfg.AuthJWKSURL != "http://auth-service.local/.well-known/jwks.json" {
+		t.Fatalf("AuthJWKSURL = %q, want %q", cfg.AuthJWKSURL, "http://auth-service.local/.well-known/jwks.json")
 	}
 
-	if cfg.AuthPublicKeyRequestTimeout != 3*time.Second {
-		t.Fatalf("AuthPublicKeyRequestTimeout = %s, want %s", cfg.AuthPublicKeyRequestTimeout, 3*time.Second)
+	if cfg.AuthJWKSRequestTimeout != 3*time.Second {
+		t.Fatalf("AuthJWKSRequestTimeout = %s, want %s", cfg.AuthJWKSRequestTimeout, 3*time.Second)
 	}
 
-	if cfg.AuthPublicKeyRefreshInterval != 10*time.Minute {
-		t.Fatalf("AuthPublicKeyRefreshInterval = %s, want %s", cfg.AuthPublicKeyRefreshInterval, 10*time.Minute)
+	if cfg.AuthJWKSRefreshInterval != 10*time.Minute {
+		t.Fatalf("AuthJWKSRefreshInterval = %s, want %s", cfg.AuthJWKSRefreshInterval, 10*time.Minute)
 	}
 
 	if cfg.JWTAlgorithm != supportedJWTAlgorithm {
 		t.Fatalf("JWTAlgorithm = %q, want %q", cfg.JWTAlgorithm, supportedJWTAlgorithm)
 	}
 
-	if cfg.JWTAudience != "sidecargo" {
-		t.Fatalf("JWTAudience = %q, want %q", cfg.JWTAudience, "sidecargo")
+	if cfg.JWTAudience != "wintergate" {
+		t.Fatalf("JWTAudience = %q, want %q", cfg.JWTAudience, "wintergate")
 	}
 
 	if cfg.JWTClockSkew != 45*time.Second {
@@ -56,13 +56,13 @@ func TestLoadEnvConfig(t *testing.T) {
 
 func TestLoadEnvConfigPrefersProcessEnv(t *testing.T) {
 	envPath := writeEnvFile(t, map[string]string{
-		envAuthPublicKeyURL:             "http://auth-service.local/public.pem",
-		envAuthPublicKeyRequestTimeout:  "3s",
-		envAuthPublicKeyRefreshInterval: "10m",
-		envJWTAlgorithm:                 supportedJWTAlgorithm,
-		envJWTAudience:                  "sidecargo",
-		envJWTClockSkew:                 "45s",
-		envJWTIssuer:                    "auth-service",
+		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
+		envAuthJWKSRequestTimeout:  "3s",
+		envAuthJWKSRefreshInterval: "10m",
+		envJWTAlgorithm:            supportedJWTAlgorithm,
+		envJWTAudience:             "wintergate",
+		envJWTClockSkew:            "45s",
+		envJWTIssuer:               "auth-service",
 	})
 
 	t.Setenv(envJWTIssuer, "override-issuer")
@@ -79,12 +79,12 @@ func TestLoadEnvConfigPrefersProcessEnv(t *testing.T) {
 
 func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
 	envPath := writeEnvFile(t, map[string]string{
-		envAuthPublicKeyURL:             "http://auth-service.local/public.pem",
-		envAuthPublicKeyRequestTimeout:  "3s",
-		envAuthPublicKeyRefreshInterval: "10m",
-		envJWTAlgorithm:                 supportedJWTAlgorithm,
-		envJWTClockSkew:                 "45s",
-		envJWTIssuer:                    "auth-service",
+		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
+		envAuthJWKSRequestTimeout:  "3s",
+		envAuthJWKSRefreshInterval: "10m",
+		envJWTAlgorithm:            supportedJWTAlgorithm,
+		envJWTClockSkew:            "45s",
+		envJWTIssuer:               "auth-service",
 	})
 
 	_, err := LoadEnvConfig(envPath)
@@ -103,13 +103,13 @@ func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
 
 func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
 	envPath := writeEnvFile(t, map[string]string{
-		envAuthPublicKeyURL:             "http://auth-service.local/public.pem",
-		envAuthPublicKeyRequestTimeout:  "not-a-duration",
-		envAuthPublicKeyRefreshInterval: "10m",
-		envJWTAlgorithm:                 supportedJWTAlgorithm,
-		envJWTAudience:                  "sidecargo",
-		envJWTClockSkew:                 "45s",
-		envJWTIssuer:                    "auth-service",
+		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
+		envAuthJWKSRequestTimeout:  "not-a-duration",
+		envAuthJWKSRefreshInterval: "10m",
+		envJWTAlgorithm:            supportedJWTAlgorithm,
+		envJWTAudience:             "wintergate",
+		envJWTClockSkew:            "45s",
+		envJWTIssuer:               "auth-service",
 	})
 
 	_, err := LoadEnvConfig(envPath)
@@ -121,20 +121,20 @@ func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 
-	if !strings.Contains(err.Error(), envAuthPublicKeyRequestTimeout) {
-		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envAuthPublicKeyRequestTimeout)
+	if !strings.Contains(err.Error(), envAuthJWKSRequestTimeout) {
+		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envAuthJWKSRequestTimeout)
 	}
 }
 
 func TestLoadEnvConfigReturnsErrorWhenAlgorithmUnsupported(t *testing.T) {
 	envPath := writeEnvFile(t, map[string]string{
-		envAuthPublicKeyURL:             "http://auth-service.local/public.pem",
-		envAuthPublicKeyRequestTimeout:  "3s",
-		envAuthPublicKeyRefreshInterval: "10m",
-		envJWTAlgorithm:                 "HS256",
-		envJWTAudience:                  "sidecargo",
-		envJWTClockSkew:                 "45s",
-		envJWTIssuer:                    "auth-service",
+		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
+		envAuthJWKSRequestTimeout:  "3s",
+		envAuthJWKSRefreshInterval: "10m",
+		envJWTAlgorithm:            "HS256",
+		envJWTAudience:             "wintergate",
+		envJWTClockSkew:            "45s",
+		envJWTIssuer:               "auth-service",
 	})
 
 	_, err := LoadEnvConfig(envPath)
