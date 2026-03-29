@@ -10,6 +10,8 @@ import (
 )
 
 func TestLoadEnvConfig(t *testing.T) {
+	resetEnv(t)
+
 	envPath := writeEnvFile(t, map[string]string{
 		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
 		envAuthJWKSRequestTimeout:  "3s",
@@ -55,6 +57,8 @@ func TestLoadEnvConfig(t *testing.T) {
 }
 
 func TestLoadEnvConfigPrefersProcessEnv(t *testing.T) {
+	resetEnv(t)
+
 	envPath := writeEnvFile(t, map[string]string{
 		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
 		envAuthJWKSRequestTimeout:  "3s",
@@ -78,6 +82,8 @@ func TestLoadEnvConfigPrefersProcessEnv(t *testing.T) {
 }
 
 func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
+	resetEnv(t)
+
 	envPath := writeEnvFile(t, map[string]string{
 		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
 		envAuthJWKSRequestTimeout:  "3s",
@@ -102,6 +108,8 @@ func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
 }
 
 func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
+	resetEnv(t)
+
 	envPath := writeEnvFile(t, map[string]string{
 		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
 		envAuthJWKSRequestTimeout:  "not-a-duration",
@@ -127,6 +135,8 @@ func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
 }
 
 func TestLoadEnvConfigReturnsErrorWhenAlgorithmUnsupported(t *testing.T) {
+	resetEnv(t)
+
 	envPath := writeEnvFile(t, map[string]string{
 		envAuthJWKSURL:             "http://auth-service.local/.well-known/jwks.json",
 		envAuthJWKSRequestTimeout:  "3s",
@@ -149,6 +159,50 @@ func TestLoadEnvConfigReturnsErrorWhenAlgorithmUnsupported(t *testing.T) {
 	if !strings.Contains(err.Error(), envJWTAlgorithm) {
 		t.Fatalf("error = %q, want unsupported key %q in message", err.Error(), envJWTAlgorithm)
 	}
+}
+
+func resetEnv(t *testing.T) {
+	t.Helper()
+
+	keys := []string{
+		envAuthJWKSURL,
+		envAuthJWKSRequestTimeout,
+		envAuthJWKSRefreshInterval,
+		envJWTAlgorithm,
+		envJWTAudience,
+		envJWTClockSkew,
+		envJWTIssuer,
+	}
+
+	originalValues := make(map[string]string, len(keys))
+	originalState := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		value, ok := os.LookupEnv(key)
+		if ok {
+			originalValues[key] = value
+		}
+		originalState[key] = ok
+
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatalf("unset env %s: %v", key, err)
+		}
+	}
+
+	t.Cleanup(func() {
+		for _, key := range keys {
+			if !originalState[key] {
+				if err := os.Unsetenv(key); err != nil {
+					t.Fatalf("cleanup unset env %s: %v", key, err)
+				}
+
+				continue
+			}
+
+			if err := os.Setenv(key, originalValues[key]); err != nil {
+				t.Fatalf("cleanup restore env %s: %v", key, err)
+			}
+		}
+	})
 }
 
 func writeEnvFile(t *testing.T, values map[string]string) string {

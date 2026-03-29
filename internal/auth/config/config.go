@@ -2,11 +2,12 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
+
+	"sidecargo/internal/utils"
 )
 
 // EnvConfig 환경 파일에서 읽은 인증 설정을 보관합니다.
@@ -26,42 +27,41 @@ func LoadEnvConfig(path string) (EnvConfig, error) {
 		path = defaultEnvPath
 	}
 
-	values, err := godotenv.Read(path)
-	if err != nil {
-		return EnvConfig{}, fmt.Errorf("%w: read %s: %v", ErrInvalidConfig, path, err)
+	if err := godotenv.Load(path); err != nil {
+		return EnvConfig{}, fmt.Errorf("%w: load %s: %v", ErrInvalidConfig, path, err)
 	}
 
-	authJWKSURL, err := requireString(values, envAuthJWKSURL)
-	if err != nil {
-		return EnvConfig{}, err
-	}
-
-	jwtIssuer, err := requireString(values, envJWTIssuer)
+	authJWKSURL, err := utils.RequireString(envAuthJWKSURL, ErrInvalidConfig)
 	if err != nil {
 		return EnvConfig{}, err
 	}
 
-	jwtAudience, err := requireString(values, envJWTAudience)
+	jwtIssuer, err := utils.RequireString(envJWTIssuer, ErrInvalidConfig)
 	if err != nil {
 		return EnvConfig{}, err
 	}
 
-	jwtAlgorithm, err := requireString(values, envJWTAlgorithm)
+	jwtAudience, err := utils.RequireString(envJWTAudience, ErrInvalidConfig)
 	if err != nil {
 		return EnvConfig{}, err
 	}
 
-	authJWKSRequestTimeout, err := requireDuration(values, envAuthJWKSRequestTimeout)
+	jwtAlgorithm, err := utils.RequireString(envJWTAlgorithm, ErrInvalidConfig)
 	if err != nil {
 		return EnvConfig{}, err
 	}
 
-	authJWKSRefreshInterval, err := requireDuration(values, envAuthJWKSRefreshInterval)
+	authJWKSRequestTimeout, err := utils.RequireDuration(envAuthJWKSRequestTimeout, ErrInvalidConfig)
 	if err != nil {
 		return EnvConfig{}, err
 	}
 
-	jwtClockSkew, err := requireDuration(values, envJWTClockSkew)
+	authJWKSRefreshInterval, err := utils.RequireDuration(envAuthJWKSRefreshInterval, ErrInvalidConfig)
+	if err != nil {
+		return EnvConfig{}, err
+	}
+
+	jwtClockSkew, err := utils.RequireDuration(envJWTClockSkew, ErrInvalidConfig)
 	if err != nil {
 		return EnvConfig{}, err
 	}
@@ -81,33 +81,4 @@ func LoadEnvConfig(path string) (EnvConfig, error) {
 	}
 
 	return cfg, nil
-}
-
-func requireString(values map[string]string, key string) (string, error) {
-	if envValue := strings.TrimSpace(os.Getenv(key)); envValue != "" {
-		return envValue, nil
-	}
-
-	if value, ok := values[key]; ok {
-		trimmedValue := strings.TrimSpace(value)
-		if trimmedValue != "" {
-			return trimmedValue, nil
-		}
-	}
-
-	return "", fmt.Errorf("%w: %s is required", ErrInvalidConfig, key)
-}
-
-func requireDuration(values map[string]string, key string) (time.Duration, error) {
-	rawValue, err := requireString(values, key)
-	if err != nil {
-		return 0, err
-	}
-
-	duration, err := time.ParseDuration(rawValue)
-	if err != nil {
-		return 0, fmt.Errorf("%w: invalid duration for %s: %v", ErrInvalidConfig, key, err)
-	}
-
-	return duration, nil
 }
