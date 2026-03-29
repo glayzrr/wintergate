@@ -14,8 +14,10 @@ func TestLoadEnvConfig(t *testing.T) {
 
 	envPath := writeEnvFile(t, map[string]string{
 		envRouteServiceHeader:          "X-Wintergate-Service",
+		envRouteTableURL:               "http://route-service.local/routes",
+		envRouteTableRequestTimeout:    "2s",
+		envRouteTableRefreshInterval:   "30s",
 		envRouteUpstreamRequestTimeout: "3s",
-		envRouteUpstreams:             `{"user-service":"http://user-service.default.svc.cluster.local:8080","order-service":"http://order-service.default.svc.cluster.local:8080"}`,
 	})
 
 	cfg, err := LoadEnvConfig(envPath)
@@ -27,16 +29,20 @@ func TestLoadEnvConfig(t *testing.T) {
 		t.Fatalf("RouteServiceHeader = %q, want %q", cfg.RouteServiceHeader, "X-Wintergate-Service")
 	}
 
+	if cfg.RouteTableURL != "http://route-service.local/routes" {
+		t.Fatalf("RouteTableURL = %q, want %q", cfg.RouteTableURL, "http://route-service.local/routes")
+	}
+
+	if cfg.RouteTableRequestTimeout != 2*time.Second {
+		t.Fatalf("RouteTableRequestTimeout = %s, want %s", cfg.RouteTableRequestTimeout, 2*time.Second)
+	}
+
+	if cfg.RouteTableRefreshInterval != 30*time.Second {
+		t.Fatalf("RouteTableRefreshInterval = %s, want %s", cfg.RouteTableRefreshInterval, 30*time.Second)
+	}
+
 	if cfg.RouteUpstreamRequestTimeout != 3*time.Second {
 		t.Fatalf("RouteUpstreamRequestTimeout = %s, want %s", cfg.RouteUpstreamRequestTimeout, 3*time.Second)
-	}
-
-	if cfg.RouteUpstreams["user-service"] != "http://user-service.default.svc.cluster.local:8080" {
-		t.Fatalf("RouteUpstreams[user-service] = %q, want %q", cfg.RouteUpstreams["user-service"], "http://user-service.default.svc.cluster.local:8080")
-	}
-
-	if cfg.RouteUpstreams["order-service"] != "http://order-service.default.svc.cluster.local:8080" {
-		t.Fatalf("RouteUpstreams[order-service] = %q, want %q", cfg.RouteUpstreams["order-service"], "http://order-service.default.svc.cluster.local:8080")
 	}
 }
 
@@ -45,8 +51,10 @@ func TestLoadEnvConfigPrefersProcessEnv(t *testing.T) {
 
 	envPath := writeEnvFile(t, map[string]string{
 		envRouteServiceHeader:          "X-Wintergate-Service",
+		envRouteTableURL:               "http://route-service.local/routes",
+		envRouteTableRequestTimeout:    "2s",
+		envRouteTableRefreshInterval:   "30s",
 		envRouteUpstreamRequestTimeout: "3s",
-		envRouteUpstreams:             `{"user-service":"http://user-service.default.svc.cluster.local:8080"}`,
 	})
 
 	t.Setenv(envRouteServiceHeader, "X-Route-Service")
@@ -66,6 +74,8 @@ func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
 
 	envPath := writeEnvFile(t, map[string]string{
 		envRouteServiceHeader:          "X-Wintergate-Service",
+		envRouteTableRequestTimeout:    "2s",
+		envRouteTableRefreshInterval:   "30s",
 		envRouteUpstreamRequestTimeout: "3s",
 	})
 
@@ -78,8 +88,8 @@ func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 
-	if !strings.Contains(err.Error(), envRouteUpstreams) {
-		t.Fatalf("error = %q, want missing key %q in message", err.Error(), envRouteUpstreams)
+	if !strings.Contains(err.Error(), envRouteTableURL) {
+		t.Fatalf("error = %q, want missing key %q in message", err.Error(), envRouteTableURL)
 	}
 }
 
@@ -88,8 +98,10 @@ func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
 
 	envPath := writeEnvFile(t, map[string]string{
 		envRouteServiceHeader:          "X-Wintergate-Service",
+		envRouteTableURL:               "http://route-service.local/routes",
+		envRouteTableRequestTimeout:    "2s",
+		envRouteTableRefreshInterval:   "30s",
 		envRouteUpstreamRequestTimeout: "not-a-duration",
-		envRouteUpstreams:             `{"user-service":"http://user-service.default.svc.cluster.local:8080"}`,
 	})
 
 	_, err := LoadEnvConfig(envPath)
@@ -106,13 +118,15 @@ func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
 	}
 }
 
-func TestLoadEnvConfigReturnsErrorWhenUpstreamsInvalidJSON(t *testing.T) {
+func TestLoadEnvConfigReturnsErrorWhenRouteTableRequestTimeoutInvalid(t *testing.T) {
 	resetEnv(t)
 
 	envPath := writeEnvFile(t, map[string]string{
 		envRouteServiceHeader:          "X-Wintergate-Service",
+		envRouteTableURL:               "http://route-service.local/routes",
+		envRouteTableRequestTimeout:    "not-a-duration",
+		envRouteTableRefreshInterval:   "30s",
 		envRouteUpstreamRequestTimeout: "3s",
-		envRouteUpstreams:             `{invalid-json}`,
 	})
 
 	_, err := LoadEnvConfig(envPath)
@@ -124,18 +138,20 @@ func TestLoadEnvConfigReturnsErrorWhenUpstreamsInvalidJSON(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 
-	if !strings.Contains(err.Error(), envRouteUpstreams) {
-		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envRouteUpstreams)
+	if !strings.Contains(err.Error(), envRouteTableRequestTimeout) {
+		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envRouteTableRequestTimeout)
 	}
 }
 
-func TestLoadEnvConfigReturnsErrorWhenUpstreamURLInvalid(t *testing.T) {
+func TestLoadEnvConfigReturnsErrorWhenRouteTableRefreshIntervalInvalid(t *testing.T) {
 	resetEnv(t)
 
 	envPath := writeEnvFile(t, map[string]string{
 		envRouteServiceHeader:          "X-Wintergate-Service",
+		envRouteTableURL:               "http://route-service.local/routes",
+		envRouteTableRequestTimeout:    "2s",
+		envRouteTableRefreshInterval:   "not-a-duration",
 		envRouteUpstreamRequestTimeout: "3s",
-		envRouteUpstreams:             `{"user-service":"user-service.default.svc.cluster.local:8080"}`,
 	})
 
 	_, err := LoadEnvConfig(envPath)
@@ -147,31 +163,8 @@ func TestLoadEnvConfigReturnsErrorWhenUpstreamURLInvalid(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 
-	if !strings.Contains(err.Error(), envRouteUpstreams) {
-		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envRouteUpstreams)
-	}
-}
-
-func TestLoadEnvConfigReturnsErrorWhenServiceNameEmpty(t *testing.T) {
-	resetEnv(t)
-
-	envPath := writeEnvFile(t, map[string]string{
-		envRouteServiceHeader:          "X-Wintergate-Service",
-		envRouteUpstreamRequestTimeout: "3s",
-		envRouteUpstreams:             `{"":"http://user-service.default.svc.cluster.local:8080"}`,
-	})
-
-	_, err := LoadEnvConfig(envPath)
-	if err == nil {
-		t.Fatal("LoadEnvConfig returned nil error")
-	}
-
-	if !errors.Is(err, ErrInvalidConfig) {
-		t.Fatalf("error = %v, want ErrInvalidConfig", err)
-	}
-
-	if !strings.Contains(err.Error(), envRouteUpstreams) {
-		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envRouteUpstreams)
+	if !strings.Contains(err.Error(), envRouteTableRefreshInterval) {
+		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envRouteTableRefreshInterval)
 	}
 }
 
@@ -180,8 +173,10 @@ func resetEnv(t *testing.T) {
 
 	keys := []string{
 		envRouteServiceHeader,
+		envRouteTableURL,
+		envRouteTableRequestTimeout,
+		envRouteTableRefreshInterval,
 		envRouteUpstreamRequestTimeout,
-		envRouteUpstreams,
 	}
 
 	originalValues := make(map[string]string, len(keys))

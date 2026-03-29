@@ -81,6 +81,49 @@ func TestLoadEnvConfigPrefersProcessEnv(t *testing.T) {
 	}
 }
 
+func TestLoadEnvConfigUsesDefaultEnvPath(t *testing.T) {
+	resetEnv(t)
+
+	tempDir := t.TempDir()
+	envPath := filepath.Join(tempDir, defaultEnvPath)
+	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
+		envAuthJWKSURL + "=http://auth-service.local/.well-known/jwks.json",
+		envAuthJWKSRequestTimeout + "=3s",
+		envAuthJWKSRefreshInterval + "=10m",
+		envJWTAlgorithm + "=" + supportedJWTAlgorithm,
+		envJWTAudience + "=wintergate",
+		envJWTClockSkew + "=45s",
+		envJWTIssuer + "=auth-service",
+		"",
+	}, "\n")), 0o600); err != nil {
+		t.Fatalf("write default env file: %v", err)
+	}
+
+	currentDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd returned error: %v", err)
+	}
+
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Chdir returned error: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := os.Chdir(currentDir); err != nil {
+			t.Fatalf("restore working directory: %v", err)
+		}
+	})
+
+	cfg, err := LoadEnvConfig("")
+	if err != nil {
+		t.Fatalf("LoadEnvConfig returned error: %v", err)
+	}
+
+	if cfg.AuthJWKSURL != "http://auth-service.local/.well-known/jwks.json" {
+		t.Fatalf("AuthJWKSURL = %q, want %q", cfg.AuthJWKSURL, "http://auth-service.local/.well-known/jwks.json")
+	}
+}
+
 func TestLoadEnvConfigReturnsErrorWhenRequiredKeyMissing(t *testing.T) {
 	resetEnv(t)
 
@@ -131,6 +174,19 @@ func TestLoadEnvConfigReturnsErrorWhenDurationInvalid(t *testing.T) {
 
 	if !strings.Contains(err.Error(), envAuthJWKSRequestTimeout) {
 		t.Fatalf("error = %q, want invalid key %q in message", err.Error(), envAuthJWKSRequestTimeout)
+	}
+}
+
+func TestLoadEnvConfigReturnsErrorWhenEnvFileMissing(t *testing.T) {
+	resetEnv(t)
+
+	_, err := LoadEnvConfig(filepath.Join(t.TempDir(), "missing.env"))
+	if err == nil {
+		t.Fatal("LoadEnvConfig returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 }
 
