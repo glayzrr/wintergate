@@ -1,6 +1,7 @@
 package configapi
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"errors"
 	"net/http"
@@ -8,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	authconfig "sidecargo/internal/auth/config"
-	routeconfig "sidecargo/internal/route/config"
+	authconfig "wintergate/internal/auth/config"
+	routeconfig "wintergate/internal/route/config"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +24,61 @@ func TestNewRegistererInitializesRegistries(t *testing.T) {
 
 	if registerer.routingRegistry == nil {
 		t.Fatal("routingRegistry is nil")
+	}
+}
+
+func TestRegisterStoresSnapshotWhenValid(t *testing.T) {
+	registerer := NewRegisterer()
+	privateKey := generateRSAKey(t)
+	authSection := validAuthSection(t, privateKey)
+	originalJWKS := append([]byte(nil), authSection.JWKS...)
+
+	err := registerer.Register(Snapshot{
+		Auth: authSection,
+		Routing: &RoutingSection{
+			RouteServiceHeader:          " X-Wintergate-Service ",
+			RouteUpstreamRequestTimeout: "2s",
+			Routes: []Route{
+				{Path: " /orders ", Service: " order-service "},
+				{Path: "/payments", Service: "payment-service"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	authSection.JWKS[0] = 'x'
+
+	authRuntimeConfig, authConfigFound := registerer.authRegistry.Snapshot()
+	if !authConfigFound {
+		t.Fatal("Snapshot did not return auth config")
+	}
+
+	if !bytes.Equal(authRuntimeConfig.JWKS, originalJWKS) {
+		t.Fatal("JWKS was not copied during registration")
+	}
+
+	routingRuntimeConfig, routingConfigFound := registerer.routingRegistry.Snapshot()
+	if !routingConfigFound {
+		t.Fatal("Snapshot did not return routing config")
+	}
+
+	if routingRuntimeConfig.RouteServiceHeader != "X-Wintergate-Service" {
+		t.Fatalf("RouteServiceHeader = %q, want %q", routingRuntimeConfig.RouteServiceHeader, "X-Wintergate-Service")
+	}
+
+	if len(routingRuntimeConfig.Entries) != 2 {
+		t.Fatalf("len(Entries) = %d, want %d", len(routingRuntimeConfig.Entries), 2)
+	}
+
+	service, found := registerer.routingRegistry.Service("/orders")
+	if !found {
+		t.Fatal("Service did not find /orders")
+	}
+
+	if service != "order-service" {
+		t.Fatalf("service = %q, want %q", service, "order-service")
 	}
 }
 
@@ -207,7 +263,7 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	handler.RegisterRoutes(router)
 
 	request := httptest.NewRequest(
-		http.MethodPut,
+		http.MethodPost,
 		DefaultRoute,
 		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service"}]}}`),
 	)

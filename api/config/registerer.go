@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	authconfig "sidecargo/internal/auth/config"
-	routeconfig "sidecargo/internal/route/config"
+	authconfig "wintergate/internal/auth/config"
+	routeconfig "wintergate/internal/route/config"
 )
 
 // Registerer 설정 스냅샷을 받아 필요한 내부 저장소에 일괄 등록합니다.

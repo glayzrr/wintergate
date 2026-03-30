@@ -42,7 +42,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 	handler.RegisterRoutes(router)
 
 	request := httptest.NewRequest(
-		http.MethodPut,
+		http.MethodPost,
 		DefaultRoute,
 		strings.NewReader(`{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service"}]}}`),
 	)
@@ -108,7 +108,7 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 	router := gin.New()
 	handler.RegisterRoutes(router)
 
-	request := httptest.NewRequest(http.MethodPut, DefaultRoute, strings.NewReader(`{`))
+	request := httptest.NewRequest(http.MethodPost, DefaultRoute, strings.NewReader(`{`))
 	request.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()

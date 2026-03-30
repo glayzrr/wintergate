@@ -158,7 +158,7 @@ func TestNewRouterRegistersConfigRoute(t *testing.T) {
 		t.Fatalf("newRouter returned error: %v", err)
 	}
 
-	request := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{`))
+	request := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(`{`))
 	request.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -166,6 +166,27 @@ func TestNewRouterRegistersConfigRoute(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
+func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router, err := newRouter()
+	if err != nil {
+		t.Fatalf("newRouter returned error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if !strings.Contains(recorder.Body.String(), `"received":true`) {
+		t.Fatalf("body = %q, want received flag in response", recorder.Body.String())
 	}
 }
 
