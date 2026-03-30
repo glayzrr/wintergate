@@ -3,12 +3,14 @@ package configapi
 import (
 	"bytes"
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	responseapi "wintergate/api/response"
 	authconfig "wintergate/internal/auth/config"
 	routeconfig "wintergate/internal/route/config"
 
@@ -274,6 +276,19 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	var response responseapi.APIResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseRegisterFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseRegisterFailed)
 	}
 }
 

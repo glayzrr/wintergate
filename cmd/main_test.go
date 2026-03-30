@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	responseapi "wintergate/api/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -167,6 +170,11 @@ func TestNewRouterRegistersConfigRoute(t *testing.T) {
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
 }
 
 func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
@@ -185,9 +193,31 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	if !strings.Contains(recorder.Body.String(), `"received":true`) {
-		t.Fatalf("body = %q, want received flag in response", recorder.Body.String())
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
 	}
+
+	data, ok := response.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("response.Data type = %T, want map[string]any", response.Data)
+	}
+
+	received, ok := data["received"].(bool)
+	if !ok || !received {
+		t.Fatalf("data[received] = %#v, want true", data["received"])
+	}
+}
+
+func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
+	t.Helper()
+
+	var response responseapi.APIResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	return response
 }
 
 func TestListenAddressReturnsPortWhenSet(t *testing.T) {

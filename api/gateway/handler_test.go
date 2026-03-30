@@ -1,12 +1,14 @@
 package gatewayapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	configapi "wintergate/api/config"
+	responseapi "wintergate/api/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,17 +29,33 @@ func TestHandlerReceiveReturnsGatewayIngressResponse(t *testing.T) {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 
-	body := recorder.Body.String()
-	if !strings.Contains(body, `"received":true`) {
-		t.Fatalf("body = %q, want received flag in response", body)
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
 	}
 
-	if !strings.Contains(body, `"method":"POST"`) {
-		t.Fatalf("body = %q, want method in response", body)
+	if response.Message != responseReceiveSuccess {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseReceiveSuccess)
 	}
 
-	if !strings.Contains(body, `"path":"/orders"`) {
-		t.Fatalf("body = %q, want path in response", body)
+	data, ok := response.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("response.Data type = %T, want map[string]any", response.Data)
+	}
+
+	received, ok := data["received"].(bool)
+	if !ok || !received {
+		t.Fatalf("data[received] = %#v, want true", data["received"])
+	}
+
+	method, ok := data["method"].(string)
+	if !ok || method != http.MethodPost {
+		t.Fatalf("data[method] = %#v, want %q", data["method"], http.MethodPost)
+	}
+
+	path, ok := data["path"].(string)
+	if !ok || path != "/orders" {
+		t.Fatalf("data[path] = %#v, want %q", data["path"], "/orders")
 	}
 }
 
@@ -56,4 +74,24 @@ func TestHandlerReceiveLeavesConfigRouteUnclaimed(t *testing.T) {
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
 	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseNotFound {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseNotFound)
+	}
+}
+
+func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
+	t.Helper()
+
+	var response responseapi.APIResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	return response
 }

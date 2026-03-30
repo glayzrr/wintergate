@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	configapi "wintergate/api/config"
+	responseapi "wintergate/api/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,13 +26,20 @@ func (h *Handler) RegisterRoutes(router *gin.Engine) {
 func (h *Handler) Receive(ctx *gin.Context) {
 	requestPath := ctx.Request.URL.Path
 	if requestPath == configapi.DefaultRoute {
-		ctx.AbortWithStatus(http.StatusNotFound)
+		ctx.AbortWithStatusJSON(http.StatusNotFound, responseapi.APIResponse{
+			Success: false,
+			Message: responseNotFound,
+		})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, ReceiveResponse{
-		Received: true,
-		Method:   ctx.Request.Method,
-		Path:     requestPath,
+	ctx.JSON(http.StatusOK, responseapi.APIResponse{
+		Success: true,
+		Message: responseReceiveSuccess,
+		Data: ReceiveResponse{
+			Received: true,
+			Method:   ctx.Request.Method,
+			Path:     requestPath,
+		},
 	})
 }
