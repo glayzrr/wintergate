@@ -23,12 +23,12 @@ func TestNewDecoderInitializesRegistry(t *testing.T) {
 	}
 }
 
-func TestDecoderUseRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
+func TestDecoderReplaceRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
 	decoder := NewDecoder()
 
-	err := decoder.UseRegistry(nil)
+	err := decoder.ReplaceRegistry(nil)
 	if err == nil {
-		t.Fatal("UseRegistry returned nil error")
+		t.Fatal("ReplaceRegistry returned nil error")
 	}
 
 	if !errors.Is(err, ErrNilRegistry) {
@@ -61,8 +61,8 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 	}
 
 	decoder := NewDecoder()
-	if err := decoder.UseRegistry(registry); err != nil {
-		t.Fatalf("UseRegistry returned error: %v", err)
+	if err := decoder.ReplaceRegistry(registry); err != nil {
+		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_000, 0).UTC()
@@ -111,8 +111,8 @@ func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 	}
 
 	decoder := NewDecoder()
-	if err := decoder.UseRegistry(registry); err != nil {
-		t.Fatalf("UseRegistry returned error: %v", err)
+	if err := decoder.ReplaceRegistry(registry); err != nil {
+		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_100, 0).UTC()
@@ -151,8 +151,8 @@ func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 	}
 
 	decoder := NewDecoder()
-	if err := decoder.UseRegistry(registry); err != nil {
-		t.Fatalf("UseRegistry returned error: %v", err)
+	if err := decoder.ReplaceRegistry(registry); err != nil {
+		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_200, 0).UTC()
@@ -190,8 +190,8 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 	}
 
 	decoder := NewDecoder()
-	if err := decoder.UseRegistry(registry); err != nil {
-		t.Fatalf("UseRegistry returned error: %v", err)
+	if err := decoder.ReplaceRegistry(registry); err != nil {
+		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_300, 0).UTC()

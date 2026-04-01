@@ -37,8 +37,9 @@ func (o *Orchestrator) Receive(ctx context.Context, request Request) (Result, er
 
 	state := &State{
 		Request: Request{
-			Method: trimmedMethod,
-			Path:   trimmedPath,
+			Method:              trimmedMethod,
+			Path:                trimmedPath,
+			AuthorizationHeader: request.AuthorizationHeader,
 		},
 		Result: Result{
 			Received: true,

@@ -88,6 +88,27 @@ func TestReceiveRunsTasksInOrder(t *testing.T) {
 	}
 }
 
+func TestReceivePreservesAuthorizationHeader(t *testing.T) {
+	orchestrator := NewOrchestrator(
+		TaskFunc(func(_ context.Context, state *State) error {
+			if state.Request.AuthorizationHeader != "Bearer token-value" {
+				t.Fatalf("state.Request.AuthorizationHeader = %q, want %q", state.Request.AuthorizationHeader, "Bearer token-value")
+			}
+
+			return nil
+		}),
+	)
+
+	_, err := orchestrator.Receive(context.Background(), Request{
+		Method:              "POST",
+		Path:                "/orders",
+		AuthorizationHeader: "Bearer token-value",
+	})
+	if err != nil {
+		t.Fatalf("Receive returned error: %v", err)
+	}
+}
+
 func TestReceiveReturnsErrorWhenMethodMissing(t *testing.T) {
 	orchestrator := NewOrchestrator()
 

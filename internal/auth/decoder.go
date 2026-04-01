@@ -65,7 +65,7 @@ func NewDecoder() *Decoder {
 	}
 }
 
-// UseRegistry Decoder가 사용할 인증 설정 저장소를 교체합니다.
+// ReplaceRegistry Decoder가 사용할 인증 설정 저장소를 교체합니다.
 func (d *Decoder) ReplaceRegistry(registry *authconfig.Registry) error {
 	if registry == nil {
 		return fmt.Errorf("%w: registry is required", ErrNilRegistry)
