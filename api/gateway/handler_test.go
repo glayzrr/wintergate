@@ -1,7 +1,9 @@
 package gatewayapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,9 +11,17 @@ import (
 
 	configapi "wintergate/api/config"
 	responseapi "wintergate/api/response"
+	internalgateway "wintergate/internal/gateway"
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestNewHandlerInitializesOrchestrator(t *testing.T) {
+	handler := NewHandler()
+	if handler.orchestrator == nil {
+		t.Fatal("handler.orchestrator is nil")
+	}
+}
 
 func TestHandlerReceiveReturnsGatewayIngressResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -85,6 +95,74 @@ func TestHandlerReceiveLeavesConfigRouteUnclaimed(t *testing.T) {
 	}
 }
 
+func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler()
+
+	orchestrator := internalgateway.NewOrchestrator(
+		internalgatewayTaskFunc(func(_ context.Context, _ *internalgateway.State) error {
+			return internalgateway.ErrInvalidRequest
+		}),
+	)
+
+	handler.orchestrator = orchestrator
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseReceiveFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseReceiveFailed)
+	}
+}
+
+func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler()
+
+	orchestrator := internalgateway.NewOrchestrator(
+		internalgatewayTaskFunc(func(_ context.Context, _ *internalgateway.State) error {
+			return errors.New("boom")
+		}),
+	)
+
+	handler.orchestrator = orchestrator
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseReceiveFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseReceiveFailed)
+	}
+}
+
 func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
 	t.Helper()
 
@@ -94,4 +172,10 @@ func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) respon
 	}
 
 	return response
+}
+
+type internalgatewayTaskFunc func(ctx context.Context, state *internalgateway.State) error
+
+func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgateway.State) error {
+	return fn(ctx, state)
 }
