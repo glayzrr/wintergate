@@ -84,6 +84,37 @@ func TestRegisterStoresSnapshotWhenValid(t *testing.T) {
 	}
 }
 
+func TestRegisterStoresHS256SecretWhenValid(t *testing.T) {
+	registerer := NewRegisterer()
+
+	err := registerer.Register(Snapshot{
+		Auth: &AuthSection{
+			JWTAlgorithm: "HS256",
+			JWTAudience:  "wintergate",
+			JWTClockSkew: "1m",
+			JWTIssuer:    "auth-service",
+			JWTSecret:    " shared-secret ",
+		},
+		Routing: validRoutingSection(),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	authRuntimeConfig, authConfigFound := registerer.authRegistry.Snapshot()
+	if !authConfigFound {
+		t.Fatal("Snapshot did not return auth config")
+	}
+
+	if string(authRuntimeConfig.JWTSecret) != "shared-secret" {
+		t.Fatalf("JWTSecret = %q, want %q", string(authRuntimeConfig.JWTSecret), "shared-secret")
+	}
+
+	if len(authRuntimeConfig.JWKS) != 0 {
+		t.Fatalf("len(JWKS) = %d, want %d", len(authRuntimeConfig.JWKS), 0)
+	}
+}
+
 func TestRegisterReturnsErrorWhenAuthSectionMissing(t *testing.T) {
 	registerer := NewRegisterer()
 
@@ -148,12 +179,33 @@ func TestRegisterReturnsErrorWhenAuthJWKSMissing(t *testing.T) {
 	}
 }
 
-func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
+func TestRegisterReturnsErrorWhenAuthSecretMissingForHS256(t *testing.T) {
 	registerer := NewRegisterer()
 
 	err := registerer.Register(Snapshot{
 		Auth: &AuthSection{
 			JWTAlgorithm: "HS256",
+			JWTAudience:  "wintergate",
+			JWTClockSkew: "1m",
+			JWTIssuer:    "auth-service",
+		},
+		Routing: validRoutingSection(),
+	})
+	if err == nil {
+		t.Fatal("Register returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidSnapshot) {
+		t.Fatalf("error = %v, want ErrInvalidSnapshot", err)
+	}
+}
+
+func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
+	registerer := NewRegisterer()
+
+	err := registerer.Register(Snapshot{
+		Auth: &AuthSection{
+			JWTAlgorithm: "ES256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "1m",
 			JWTIssuer:    "auth-service",

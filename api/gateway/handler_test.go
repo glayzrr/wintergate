@@ -2,15 +2,20 @@ package gatewayapi
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	configapi "wintergate/api/config"
 	responseapi "wintergate/api/response"
+	authconfig "wintergate/internal/auth/config"
 	internalgateway "wintergate/internal/gateway"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +25,13 @@ func TestNewHandlerInitializesOrchestrator(t *testing.T) {
 	handler := NewHandler()
 	if handler.orchestrator == nil {
 		t.Fatal("handler.orchestrator is nil")
+	}
+}
+
+func TestNewHandlerWithAuthRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
+	_, err := NewHandlerWithAuthRegistry(nil)
+	if err == nil {
+		t.Fatal("NewHandlerWithAuthRegistry returned nil error")
 	}
 }
 
@@ -163,6 +175,86 @@ func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
 	}
 }
 
+func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	handler, err := NewHandlerWithAuthRegistry(registry)
+	if err != nil {
+		t.Fatalf("NewHandlerWithAuthRegistry returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	request.Header.Set("Authorization", "Bearer invalid.token")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseUnauthorized {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseUnauthorized)
+	}
+}
+
+func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	handler, err := NewHandlerWithAuthRegistry(registry)
+	if err != nil {
+		t.Fatalf("NewHandlerWithAuthRegistry returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	request.Header.Set("Authorization", "Bearer "+mustHS256Token(t, []byte("shared-secret")))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+}
+
 func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
 	t.Helper()
 
@@ -178,4 +270,37 @@ type internalgatewayTaskFunc func(ctx context.Context, state *internalgateway.St
 
 func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgateway.State) error {
 	return fn(ctx, state)
+}
+
+func mustHS256Token(t *testing.T, secret []byte) string {
+	t.Helper()
+
+	issuedAt := time.Now().UTC()
+
+	headerPayload, err := json.Marshal(map[string]any{
+		"alg": "HS256",
+		"typ": "JWT",
+	})
+	if err != nil {
+		t.Fatalf("Marshal returned error for header: %v", err)
+	}
+
+	claimsPayload, err := json.Marshal(map[string]any{
+		"aud": "wintergate",
+		"exp": issuedAt.Add(time.Minute).Unix(),
+		"iat": issuedAt.Unix(),
+		"iss": "auth-service",
+		"sub": "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Marshal returned error for claims: %v", err)
+	}
+
+	signingInput := base64.RawURLEncoding.EncodeToString(headerPayload) + "." + base64.RawURLEncoding.EncodeToString(claimsPayload)
+	mac := hmac.New(sha256.New, secret)
+	if _, err := mac.Write([]byte(signingInput)); err != nil {
+		t.Fatalf("Write returned error: %v", err)
+	}
+
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }

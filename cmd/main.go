@@ -52,7 +52,10 @@ func newRouter() (*gin.Engine, error) {
 		return nil, fmt.Errorf("create config handler: %w", err)
 	}
 
-	gatewayHandler := gatewayapi.NewHandler()
+	gatewayHandler, err := gatewayapi.NewHandlerWithAuthRegistry(registerer.AuthRegistry())
+	if err != nil {
+		return nil, fmt.Errorf("create gateway handler: %w", err)
+	}
 
 	router := gin.New()
 	router.Use(gin.Recovery())

@@ -2,6 +2,7 @@ package configapi
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	authconfig "wintergate/internal/auth/config"
@@ -20,6 +21,11 @@ func NewRegisterer() *Registerer {
 		authRegistry:    authconfig.NewRegistry(),
 		routingRegistry: routeconfig.NewRegistry(),
 	}
+}
+
+// AuthRegistry 인증 런타임 설정 저장소를 반환합니다.
+func (r *Registerer) AuthRegistry() *authconfig.Registry {
+	return r.authRegistry
 }
 
 // Register 설정 스냅샷 전체를 내부 저장소에 반영합니다.
@@ -55,8 +61,15 @@ func (r *Registerer) authRuntimeConfig(authSection *AuthSection) (authconfig.Run
 		return authconfig.RuntimeConfig{}, fmt.Errorf("parse auth clock skew: %w", err)
 	}
 
-	if len(authSection.JWKS) == 0 {
-		return authconfig.RuntimeConfig{}, fmt.Errorf("%w: auth jwks is required", ErrInvalidSnapshot)
+	switch strings.TrimSpace(authSection.JWTAlgorithm) {
+	case "HS256":
+		if strings.TrimSpace(authSection.JWTSecret) == "" {
+			return authconfig.RuntimeConfig{}, fmt.Errorf("%w: auth jwt_secret is required", ErrInvalidSnapshot)
+		}
+	default:
+		if len(authSection.JWKS) == 0 {
+			return authconfig.RuntimeConfig{}, fmt.Errorf("%w: auth jwks is required", ErrInvalidSnapshot)
+		}
 	}
 
 	return authconfig.RuntimeConfig{
@@ -64,6 +77,7 @@ func (r *Registerer) authRuntimeConfig(authSection *AuthSection) (authconfig.Run
 		JWTAudience:  authSection.JWTAudience,
 		JWTClockSkew: authClockSkew,
 		JWTIssuer:    authSection.JWTIssuer,
+		JWTSecret:    []byte(strings.TrimSpace(authSection.JWTSecret)),
 		JWKS:         append([]byte(nil), authSection.JWKS...),
 	}, nil
 }
