@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
+	responseapi "wintergate/api/response"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,14 +34,23 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 func (h *Handler) PutSnapshot(ctx *gin.Context) {
 	var snapshot Snapshot
 	if err := ctx.ShouldBindJSON(&snapshot); err != nil {
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": responseBindFailed})
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
+			Success: false,
+			Message: responseBindFailed,
+		})
 		return
 	}
 
 	if err := h.registerer.Register(snapshot); err != nil {
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": responseRegisterFailed})
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
+			Success: false,
+			Message: responseRegisterFailed,
+		})
 		return
 	}
 
-	ctx.Status(http.StatusNoContent)
+	ctx.JSON(http.StatusOK, responseapi.APIResponse{
+		Success: true,
+		Message: responseRegisterSuccess,
+	})
 }

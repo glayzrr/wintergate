@@ -5,7 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	configapi "sidecargo/api/config"
+	configapi "wintergate/api/config"
+	gatewayapi "wintergate/api/gateway"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,13 +14,13 @@ import (
 const defaultListenAddress = ":1313"
 
 var (
-	runMain = run
+	runMain  = run
 	logError = func(msg string, args ...any) {
 		slog.Error(msg, args...)
 	}
 	exitProcess = os.Exit
 	buildRouter = newRouter
-	runServer = func(router *gin.Engine, addr string) error {
+	runServer   = func(router *gin.Engine, addr string) error {
 		return router.Run(addr)
 	}
 )
@@ -46,14 +47,20 @@ func run() error {
 
 func newRouter() (*gin.Engine, error) {
 	registerer := configapi.NewRegisterer()
-	handler, err := configapi.NewHandler(registerer)
+	configHandler, err := configapi.NewHandler(registerer)
 	if err != nil {
 		return nil, fmt.Errorf("create config handler: %w", err)
 	}
 
+	gatewayHandler, err := gatewayapi.NewHandlerWithAuthRegistry(registerer.AuthRegistry())
+	if err != nil {
+		return nil, fmt.Errorf("create gateway handler: %w", err)
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
-	handler.RegisterRoutes(router)
+	configHandler.RegisterRoutes(router)
+	gatewayHandler.RegisterRoutes(router)
 
 	return router, nil
 }

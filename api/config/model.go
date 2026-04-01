@@ -14,6 +14,7 @@ type AuthSection struct {
 	JWTAudience  string          `json:"jwt_audience"`
 	JWTClockSkew string          `json:"jwt_clock_skew"`
 	JWTIssuer    string          `json:"jwt_issuer"`
+	JWTSecret    string          `json:"jwt_secret,omitempty"`
 	JWKS         json.RawMessage `json:"jwks"`
 }
 

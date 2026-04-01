@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-const supportedJWTAlgorithm = "RS256"
+const (
+	supportedJWTAlgorithm     = "RS256"
+	supportedHMACJWTAlgorithm = "HS256"
+)
 
 type document struct {
 	Keys []key `json:"keys"`

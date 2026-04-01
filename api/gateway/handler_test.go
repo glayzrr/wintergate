@@ -1,0 +1,306 @@
+package gatewayapi
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	configapi "wintergate/api/config"
+	responseapi "wintergate/api/response"
+	authconfig "wintergate/internal/auth/config"
+	internalgateway "wintergate/internal/gateway"
+
+	"github.com/gin-gonic/gin"
+)
+
+func TestNewHandlerInitializesOrchestrator(t *testing.T) {
+	handler := NewHandler()
+	if handler.orchestrator == nil {
+		t.Fatal("handler.orchestrator is nil")
+	}
+}
+
+func TestNewHandlerWithAuthRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
+	_, err := NewHandlerWithAuthRegistry(nil)
+	if err == nil {
+		t.Fatal("NewHandlerWithAuthRegistry returned nil error")
+	}
+}
+
+func TestHandlerReceiveReturnsGatewayIngressResponse(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler()
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodPost, "/orders", strings.NewReader(`{"hello":"world"}`))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+
+	if response.Message != responseReceiveSuccess {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseReceiveSuccess)
+	}
+
+	data, ok := response.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("response.Data type = %T, want map[string]any", response.Data)
+	}
+
+	received, ok := data["received"].(bool)
+	if !ok || !received {
+		t.Fatalf("data[received] = %#v, want true", data["received"])
+	}
+
+	method, ok := data["method"].(string)
+	if !ok || method != http.MethodPost {
+		t.Fatalf("data[method] = %#v, want %q", data["method"], http.MethodPost)
+	}
+
+	path, ok := data["path"].(string)
+	if !ok || path != "/orders" {
+		t.Fatalf("data[path] = %#v, want %q", data["path"], "/orders")
+	}
+}
+
+func TestHandlerReceiveLeavesConfigRouteUnclaimed(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler()
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, configapi.DefaultRoute, nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseNotFound {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseNotFound)
+	}
+}
+
+func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler()
+
+	orchestrator := internalgateway.NewOrchestrator(
+		internalgatewayTaskFunc(func(_ context.Context, _ *internalgateway.State) error {
+			return internalgateway.ErrInvalidRequest
+		}),
+	)
+
+	handler.orchestrator = orchestrator
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseReceiveFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseReceiveFailed)
+	}
+}
+
+func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	handler := NewHandler()
+
+	orchestrator := internalgateway.NewOrchestrator(
+		internalgatewayTaskFunc(func(_ context.Context, _ *internalgateway.State) error {
+			return errors.New("boom")
+		}),
+	)
+
+	handler.orchestrator = orchestrator
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusInternalServerError)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseReceiveFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseReceiveFailed)
+	}
+}
+
+func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	handler, err := NewHandlerWithAuthRegistry(registry)
+	if err != nil {
+		t.Fatalf("NewHandlerWithAuthRegistry returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	request.Header.Set("Authorization", "Bearer invalid.token")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseUnauthorized {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseUnauthorized)
+	}
+}
+
+func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	handler, err := NewHandlerWithAuthRegistry(registry)
+	if err != nil {
+		t.Fatalf("NewHandlerWithAuthRegistry returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	request.Header.Set("Authorization", "Bearer "+mustHS256Token(t, []byte("shared-secret")))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+}
+
+func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
+	t.Helper()
+
+	var response responseapi.APIResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	return response
+}
+
+type internalgatewayTaskFunc func(ctx context.Context, state *internalgateway.State) error
+
+func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgateway.State) error {
+	return fn(ctx, state)
+}
+
+func mustHS256Token(t *testing.T, secret []byte) string {
+	t.Helper()
+
+	issuedAt := time.Now().UTC()
+
+	headerPayload, err := json.Marshal(map[string]any{
+		"alg": "HS256",
+		"typ": "JWT",
+	})
+	if err != nil {
+		t.Fatalf("Marshal returned error for header: %v", err)
+	}
+
+	claimsPayload, err := json.Marshal(map[string]any{
+		"aud": "wintergate",
+		"exp": issuedAt.Add(time.Minute).Unix(),
+		"iat": issuedAt.Unix(),
+		"iss": "auth-service",
+		"sub": "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Marshal returned error for claims: %v", err)
+	}
+
+	signingInput := base64.RawURLEncoding.EncodeToString(headerPayload) + "." + base64.RawURLEncoding.EncodeToString(claimsPayload)
+	mac := hmac.New(sha256.New, secret)
+	if _, err := mac.Write([]byte(signingInput)); err != nil {
+		t.Fatalf("Write returned error: %v", err)
+	}
+
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	responseapi "wintergate/api/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -158,7 +161,7 @@ func TestNewRouterRegistersConfigRoute(t *testing.T) {
 		t.Fatalf("newRouter returned error: %v", err)
 	}
 
-	request := httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{`))
+	request := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(`{`))
 	request.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -167,6 +170,54 @@ func TestNewRouterRegistersConfigRoute(t *testing.T) {
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
 	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+}
+
+func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router, err := newRouter()
+	if err != nil {
+		t.Fatalf("newRouter returned error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+
+	data, ok := response.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("response.Data type = %T, want map[string]any", response.Data)
+	}
+
+	received, ok := data["received"].(bool)
+	if !ok || !received {
+		t.Fatalf("data[received] = %#v, want true", data["received"])
+	}
+}
+
+func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
+	t.Helper()
+
+	var response responseapi.APIResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	return response
 }
 
 func TestListenAddressReturnsPortWhenSet(t *testing.T) {

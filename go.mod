@@ -1,4 +1,4 @@
-module sidecargo
+module wintergate
 
 go 1.26
 

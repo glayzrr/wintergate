@@ -14,6 +14,7 @@ type RuntimeConfig struct {
 	JWTAudience  string
 	JWTClockSkew time.Duration
 	JWTIssuer    string
+	JWTSecret    []byte
 	JWKS         []byte
 }
 
@@ -50,28 +51,40 @@ func (r *Registry) Register(cfg RuntimeConfig) error {
 		return fmt.Errorf("%w: jwt_issuer is required", ErrInvalidConfig)
 	}
 
-	if cfg.JWTAlgorithm != supportedJWTAlgorithm {
-		return fmt.Errorf("%w: unsupported jwt_algorithm %q", ErrInvalidConfig, cfg.JWTAlgorithm)
-	}
-
-	if len(cfg.JWKS) == 0 {
-		return fmt.Errorf("%w: jwks is required", ErrInvalidConfig)
-	}
-
+	jwtSecret := append([]byte(nil), cfg.JWTSecret...)
 	jwks := append([]byte(nil), cfg.JWKS...)
-	keyDocument, err := newDocumentFromBytes(jwks)
-	if err != nil {
-		return fmt.Errorf("decode jwks: %w", err)
-	}
+	var keys map[string]*rsa.PublicKey
 
-	keys, err := keyDocument.publicKeys()
-	if err != nil {
-		return fmt.Errorf("parse jwks: %w", err)
+	switch cfg.JWTAlgorithm {
+	case supportedJWTAlgorithm:
+		if len(jwks) == 0 {
+			return fmt.Errorf("%w: jwks is required", ErrInvalidConfig)
+		}
+
+		keyDocument, err := newDocumentFromBytes(jwks)
+		if err != nil {
+			return fmt.Errorf("decode jwks: %w", err)
+		}
+
+		keys, err = keyDocument.publicKeys()
+		if err != nil {
+			return fmt.Errorf("parse jwks: %w", err)
+		}
+	case supportedHMACJWTAlgorithm:
+		if strings.TrimSpace(string(jwtSecret)) == "" {
+			return fmt.Errorf("%w: jwt_secret is required", ErrInvalidConfig)
+		}
+
+		jwks = nil
+		keys = make(map[string]*rsa.PublicKey)
+	default:
+		return fmt.Errorf("%w: unsupported jwt_algorithm %q", ErrInvalidConfig, cfg.JWTAlgorithm)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	cfg.JWTSecret = jwtSecret
 	cfg.JWKS = jwks
 	r.config = cfg
 	r.keys = keys
@@ -90,6 +103,7 @@ func (r *Registry) Snapshot() (RuntimeConfig, bool) {
 	}
 
 	cfg := r.config
+	cfg.JWTSecret = append([]byte(nil), r.config.JWTSecret...)
 	cfg.JWKS = append([]byte(nil), r.config.JWKS...)
 
 	return cfg, true
