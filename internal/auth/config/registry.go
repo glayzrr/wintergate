@@ -8,22 +8,17 @@ import (
 	"time"
 )
 
-// RuntimeConfig 인증 런타임 설정과 JWKS 값을 보관합니다.
-type RuntimeConfig struct {
-	JWTAlgorithm string
-	JWTAudience  string
-	JWTClockSkew time.Duration
-	JWTIssuer    string
-	JWTSecret    []byte
-	JWKS         []byte
-}
-
 // Registry 인증 런타임 설정과 JWKS를 메모리에 보관합니다.
 type Registry struct {
-	mu     sync.RWMutex
-	config RuntimeConfig
-	keys   map[string]*rsa.PublicKey
-	set    bool
+	mu         sync.RWMutex
+	algorithm  string
+	audience   string
+	clockSkew  time.Duration
+	issuer     string
+	secret     []byte
+	jwks       []byte
+	keys       map[string]*rsa.PublicKey
+	set        bool
 }
 
 // NewRegistry 빈 인증 설정 Registry를 생성합니다.
@@ -84,9 +79,12 @@ func (r *Registry) Register(cfg RuntimeConfig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	cfg.JWTSecret = jwtSecret
-	cfg.JWKS = jwks
-	r.config = cfg
+	r.algorithm = cfg.JWTAlgorithm
+	r.audience = cfg.JWTAudience
+	r.clockSkew = cfg.JWTClockSkew
+	r.issuer = cfg.JWTIssuer
+	r.secret = jwtSecret
+	r.jwks = jwks
 	r.keys = keys
 	r.set = true
 
@@ -102,9 +100,14 @@ func (r *Registry) Snapshot() (RuntimeConfig, bool) {
 		return RuntimeConfig{}, false
 	}
 
-	cfg := r.config
-	cfg.JWTSecret = append([]byte(nil), r.config.JWTSecret...)
-	cfg.JWKS = append([]byte(nil), r.config.JWKS...)
+	cfg := RuntimeConfig{
+		JWTAlgorithm: r.algorithm,
+		JWTAudience:  r.audience,
+		JWTClockSkew: r.clockSkew,
+		JWTIssuer:    r.issuer,
+		JWTSecret:    append([]byte(nil), r.secret...),
+		JWKS:         append([]byte(nil), r.jwks...),
+	}
 
 	return cfg, true
 }

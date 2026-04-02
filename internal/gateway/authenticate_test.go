@@ -8,26 +8,19 @@ import (
 	internalauth "wintergate/internal/auth"
 )
 
-func TestNewAuthenticateTaskReturnsErrorWhenDecoderNil(t *testing.T) {
-	_, err := NewAuthenticateTask(nil)
-	if err == nil {
-		t.Fatal("NewAuthenticateTask returned nil error")
-	}
-
-	if !errors.Is(err, ErrNilTokenDecoder) {
-		t.Fatalf("error = %v, want ErrNilTokenDecoder", err)
+func TestNewAuthenticateTaskReturnsTaskWhenDecoderNil(t *testing.T) {
+	task := NewAuthenticateTask(nil)
+	if task == nil {
+		t.Fatal("NewAuthenticateTask returned nil task")
 	}
 }
 
 func TestAuthenticateTaskRunStoresClaims(t *testing.T) {
-	task, err := NewAuthenticateTask(stubTokenDecoder{
+	task := NewAuthenticateTask(stubTokenDecoder{
 		claims: internalauth.Claims{
 			Subject: "user-1",
 		},
 	})
-	if err != nil {
-		t.Fatalf("NewAuthenticateTask returned error: %v", err)
-	}
 
 	state := &State{
 		Request: Request{
@@ -35,7 +28,7 @@ func TestAuthenticateTaskRunStoresClaims(t *testing.T) {
 		},
 	}
 
-	err = task.Run(context.Background(), state)
+	err := task.Run(context.Background(), state)
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -50,14 +43,11 @@ func TestAuthenticateTaskRunStoresClaims(t *testing.T) {
 }
 
 func TestAuthenticateTaskRunSkipsWhenAuthorizationHeaderMissing(t *testing.T) {
-	task, err := NewAuthenticateTask(stubTokenDecoder{})
-	if err != nil {
-		t.Fatalf("NewAuthenticateTask returned error: %v", err)
-	}
+	task := NewAuthenticateTask(stubTokenDecoder{})
 
 	state := &State{}
 
-	err = task.Run(context.Background(), state)
+	err := task.Run(context.Background(), state)
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
@@ -68,10 +58,7 @@ func TestAuthenticateTaskRunSkipsWhenAuthorizationHeaderMissing(t *testing.T) {
 }
 
 func TestAuthenticateTaskRunReturnsWrappedBearerError(t *testing.T) {
-	task, err := NewAuthenticateTask(stubTokenDecoder{})
-	if err != nil {
-		t.Fatalf("NewAuthenticateTask returned error: %v", err)
-	}
+	task := NewAuthenticateTask(stubTokenDecoder{})
 
 	state := &State{
 		Request: Request{
@@ -79,7 +66,7 @@ func TestAuthenticateTaskRunReturnsWrappedBearerError(t *testing.T) {
 		},
 	}
 
-	err = task.Run(context.Background(), state)
+	err := task.Run(context.Background(), state)
 	if err == nil {
 		t.Fatal("Run returned nil error")
 	}

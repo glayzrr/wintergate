@@ -14,19 +14,6 @@ const (
 	supportedHMACJWTAlgorithm = "HS256"
 )
 
-type document struct {
-	Keys []key `json:"keys"`
-}
-
-type key struct {
-	Algorithm string `json:"alg"`
-	Exponent  string `json:"e"`
-	KeyID     string `json:"kid"`
-	KeyType   string `json:"kty"`
-	Modulus   string `json:"n"`
-	Use       string `json:"use"`
-}
-
 func newDocumentFromBytes(payload []byte) (document, error) {
 	var keyDocument document
 	if err := json.Unmarshal(payload, &keyDocument); err != nil {

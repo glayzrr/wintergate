@@ -92,6 +92,21 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		t.Fatalf("newRouter returned error: %v", err)
 	}
 
+	configRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/api/config",
+		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"shared-secret"},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service","port":8080}]}}`),
+	)
+	configRequest.Header.Set("Content-Type", "application/json")
+	configRequest.RemoteAddr = "192.0.2.10:43123"
+
+	configRecorder := httptest.NewRecorder()
+	router.ServeHTTP(configRecorder, configRequest)
+
+	if configRecorder.Code != http.StatusOK {
+		t.Fatalf("config status = %d, want %d", configRecorder.Code, http.StatusOK)
+	}
+
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)

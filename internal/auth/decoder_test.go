@@ -36,6 +36,20 @@ func TestDecoderReplaceRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
 	}
 }
 
+func TestDecoderReplaceRegistryStoresRegistry(t *testing.T) {
+	decoder := NewDecoder(authconfig.NewRegistry())
+	replacement := authconfig.NewRegistry()
+
+	err := decoder.ReplaceRegistry(replacement)
+	if err != nil {
+		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	}
+
+	if decoder.registry != replacement {
+		t.Fatal("decoder.registry did not use the replacement registry")
+	}
+}
+
 func TestBearerTokenReturnsToken(t *testing.T) {
 	token, err := BearerToken("Bearer abc.def.ghi")
 	if err != nil {
@@ -44,6 +58,45 @@ func TestBearerTokenReturnsToken(t *testing.T) {
 
 	if token != "abc.def.ghi" {
 		t.Fatalf("token = %q, want %q", token, "abc.def.ghi")
+	}
+}
+
+func TestBearerTokenReturnsErrorWhenHeaderInvalid(t *testing.T) {
+	_, err := BearerToken("Basic abc.def.ghi")
+	if err == nil {
+		t.Fatal("BearerToken returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidAuthorizationHeader) {
+		t.Fatalf("error = %v, want ErrInvalidAuthorizationHeader", err)
+	}
+}
+
+func TestBearerTokenReturnsErrorWhenTokenMissing(t *testing.T) {
+	_, err := BearerToken("Bearer")
+	if err == nil {
+		t.Fatal("BearerToken returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidAuthorizationHeader) {
+		t.Fatalf("error = %v, want ErrInvalidAuthorizationHeader", err)
+	}
+}
+
+func TestDecodeReturnsErrorWhenConfigUnavailable(t *testing.T) {
+	decoder := NewDecoder(authconfig.NewRegistry())
+
+	_, err := decoder.Decode(mustHS256Token(t, []byte("shared-secret"), map[string]any{
+		"aud": "wintergate",
+		"exp": time.Now().Add(time.Minute).Unix(),
+		"iss": "auth-service",
+	}))
+	if err == nil {
+		t.Fatal("Decode returned nil error")
+	}
+
+	if !errors.Is(err, ErrConfigUnavailable) {
+		t.Fatalf("error = %v, want ErrConfigUnavailable", err)
 	}
 }
 
@@ -93,6 +146,61 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 
 	if len(claims.Audience) != 1 || claims.Audience[0] != "wintergate" {
 		t.Fatalf("claims.Audience = %#v, want [wintergate]", claims.Audience)
+	}
+}
+
+func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	decoder := NewDecoder(authconfig.NewRegistry())
+	if err := decoder.ReplaceRegistry(registry); err != nil {
+		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	}
+
+	currentTime := time.Unix(1_700_000_050, 0).UTC()
+	decoder.now = func() time.Time {
+		return currentTime
+	}
+
+	token := mustHS256Token(t, []byte("shared-secret"), map[string]any{
+		"aud":   "wintergate",
+		"exp":   currentTime.Add(time.Minute).Unix(),
+		"iat":   currentTime.Unix(),
+		"iss":   "auth-service",
+		"scope": "orders:read",
+		"sub":   "user-1",
+	})
+
+	claims, err := decoder.Decode(token)
+	if err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+
+	if claims.Subject != "user-1" {
+		t.Fatalf("claims.Subject = %q, want %q", claims.Subject, "user-1")
+	}
+
+	if claims.Issuer != "auth-service" {
+		t.Fatalf("claims.Issuer = %q, want %q", claims.Issuer, "auth-service")
+	}
+
+	if len(claims.Audience) != 1 || claims.Audience[0] != "wintergate" {
+		t.Fatalf("claims.Audience = %#v, want [wintergate]", claims.Audience)
+	}
+
+	scope, ok := claims.Raw["scope"].(string)
+	if !ok || scope != "orders:read" {
+		t.Fatalf("claims.Raw[scope] = %#v, want %q", claims.Raw["scope"], "orders:read")
 	}
 }
 
@@ -212,6 +320,282 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Fatalf("error = %v, want ErrTokenExpired", err)
+	}
+}
+
+func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	decoder := NewDecoder(registry)
+	currentTime := time.Unix(1_700_000_350, 0).UTC()
+	decoder.now = func() time.Time {
+		return currentTime
+	}
+
+	token := mustHS256Token(t, []byte("shared-secret"), map[string]any{
+		"aud": "wintergate",
+		"exp": currentTime.Add(time.Minute).Unix(),
+		"iss": "other-service",
+	})
+
+	_, err = decoder.Decode(token)
+	if err == nil {
+		t.Fatal("Decode returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidIssuer) {
+		t.Fatalf("error = %v, want ErrInvalidIssuer", err)
+	}
+}
+
+func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	decoder := NewDecoder(registry)
+	currentTime := time.Unix(1_700_000_360, 0).UTC()
+	decoder.now = func() time.Time {
+		return currentTime
+	}
+
+	token := mustHS256Token(t, []byte("shared-secret"), map[string]any{
+		"aud": "other-service",
+		"exp": currentTime.Add(time.Minute).Unix(),
+		"iss": "auth-service",
+	})
+
+	_, err = decoder.Decode(token)
+	if err == nil {
+		t.Fatal("Decode returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidAudience) {
+		t.Fatalf("error = %v, want ErrInvalidAudience", err)
+	}
+}
+
+func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Second,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	decoder := NewDecoder(registry)
+	currentTime := time.Unix(1_700_000_370, 0).UTC()
+	decoder.now = func() time.Time {
+		return currentTime
+	}
+
+	token := mustHS256Token(t, []byte("shared-secret"), map[string]any{
+		"aud": "wintergate",
+		"exp": currentTime.Add(time.Minute).Unix(),
+		"iss": "auth-service",
+		"nbf": currentTime.Add(time.Minute).Unix(),
+	})
+
+	_, err = decoder.Decode(token)
+	if err == nil {
+		t.Fatal("Decode returned nil error")
+	}
+
+	if !errors.Is(err, ErrTokenNotYetValid) {
+		t.Fatalf("error = %v, want ErrTokenNotYetValid", err)
+	}
+}
+
+func TestDecodeReturnsErrorWhenAlgorithmMismatch(t *testing.T) {
+	registry := authconfig.NewRegistry()
+	err := registry.Register(authconfig.RuntimeConfig{
+		JWTAlgorithm: "HS256",
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Minute,
+		JWTIssuer:    "auth-service",
+		JWTSecret:    []byte("shared-secret"),
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	decoder := NewDecoder(registry)
+	currentTime := time.Unix(1_700_000_380, 0).UTC()
+	decoder.now = func() time.Time {
+		return currentTime
+	}
+
+	token := mustSignedToken(t, map[string]any{
+		"alg": "RS256",
+		"typ": "JWT",
+	}, map[string]any{
+		"aud": "wintergate",
+		"exp": currentTime.Add(time.Minute).Unix(),
+		"iss": "auth-service",
+	}, func(signingInput string) []byte {
+		mac := hmac.New(sha256.New, []byte("shared-secret"))
+		if _, err := mac.Write([]byte(signingInput)); err != nil {
+			t.Fatalf("Write returned error: %v", err)
+		}
+
+		return mac.Sum(nil)
+	})
+
+	_, err = decoder.Decode(token)
+	if err == nil {
+		t.Fatal("Decode returned nil error")
+	}
+
+	if !errors.Is(err, ErrUnsupportedAlgorithm) {
+		t.Fatalf("error = %v, want ErrUnsupportedAlgorithm", err)
+	}
+}
+
+func TestDecodeTokenHeaderReturnsErrorWhenAlgorithmMissing(t *testing.T) {
+	_, err := decodeTokenHeader([]byte(`{}`))
+	if err == nil {
+		t.Fatal("decodeTokenHeader returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("error = %v, want ErrInvalidToken", err)
+	}
+}
+
+func TestSplitTokenReturnsErrorWhenFormatInvalid(t *testing.T) {
+	_, _, _, err := splitToken("only.two")
+	if err == nil {
+		t.Fatal("splitToken returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("error = %v, want ErrInvalidToken", err)
+	}
+}
+
+func TestVerifyRS256SignatureReturnsErrorWhenInvalid(t *testing.T) {
+	privateKey := generatePrivateKey(t)
+
+	err := verifyRS256Signature(&privateKey.PublicKey, "header.payload", []byte("bad-signature"))
+	if err == nil {
+		t.Fatal("verifyRS256Signature returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidSignature) {
+		t.Fatalf("error = %v, want ErrInvalidSignature", err)
+	}
+}
+
+func TestValidateClaimsReturnsErrorWhenIssuedAtInFuture(t *testing.T) {
+	decoder := NewDecoder(authconfig.NewRegistry())
+	currentTime := time.Unix(1_700_000_390, 0).UTC()
+	decoder.now = func() time.Time {
+		return currentTime
+	}
+
+	err := decoder.validateClaims(authconfig.RuntimeConfig{
+		JWTAudience:  "wintergate",
+		JWTClockSkew: time.Second,
+		JWTIssuer:    "auth-service",
+	}, decodedClaims{
+		Claims: Claims{
+			Audience:  []string{"wintergate"},
+			ExpiresAt: currentTime.Add(time.Minute),
+			IssuedAt:  currentTime.Add(time.Minute),
+			Issuer:    "auth-service",
+		},
+		hasExpiresAt: true,
+		hasIssuedAt:  true,
+	})
+	if err == nil {
+		t.Fatal("validateClaims returned nil error")
+	}
+
+	if !errors.Is(err, ErrTokenNotYetValid) {
+		t.Fatalf("error = %v, want ErrTokenNotYetValid", err)
+	}
+}
+
+func TestAudienceClaimUnmarshalJSON(t *testing.T) {
+	var claim audienceClaim
+
+	if err := claim.UnmarshalJSON([]byte(`"wintergate"`)); err != nil {
+		t.Fatalf("UnmarshalJSON returned error for string: %v", err)
+	}
+
+	if len(claim) != 1 || claim[0] != "wintergate" {
+		t.Fatalf("claim = %#v, want [wintergate]", claim)
+	}
+
+	if err := claim.UnmarshalJSON([]byte(`["wintergate","orders"]`)); err != nil {
+		t.Fatalf("UnmarshalJSON returned error for string array: %v", err)
+	}
+
+	if len(claim) != 2 || claim[1] != "orders" {
+		t.Fatalf("claim = %#v, want [wintergate orders]", claim)
+	}
+
+	if err := claim.UnmarshalJSON([]byte(`null`)); err != nil {
+		t.Fatalf("UnmarshalJSON returned error for null: %v", err)
+	}
+
+	if claim != nil {
+		t.Fatalf("claim = %#v, want nil", claim)
+	}
+
+	if err := claim.UnmarshalJSON([]byte(`123`)); err == nil {
+		t.Fatal("UnmarshalJSON returned nil error for invalid payload")
+	}
+}
+
+func TestNumericDateUnmarshalJSON(t *testing.T) {
+	var numeric numericDate
+
+	if err := numeric.UnmarshalJSON([]byte(`1700000000.5`)); err != nil {
+		t.Fatalf("UnmarshalJSON returned error: %v", err)
+	}
+
+	if !numeric.set {
+		t.Fatal("numeric.set = false, want true")
+	}
+
+	if !numeric.time.Equal(time.Unix(1_700_000_000, int64(500*time.Millisecond)).UTC()) {
+		t.Fatalf("numeric.time = %s, want %s", numeric.time, time.Unix(1_700_000_000, int64(500*time.Millisecond)).UTC())
+	}
+
+	if err := numeric.UnmarshalJSON([]byte(`null`)); err != nil {
+		t.Fatalf("UnmarshalJSON returned error for null: %v", err)
+	}
+
+	if numeric.set {
+		t.Fatal("numeric.set = true, want false")
+	}
+
+	if err := numeric.UnmarshalJSON([]byte(`"bad"`)); err == nil {
+		t.Fatal("UnmarshalJSON returned nil error for invalid payload")
 	}
 }
 

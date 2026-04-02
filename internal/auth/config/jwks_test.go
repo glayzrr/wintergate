@@ -21,6 +21,17 @@ func TestDocumentPublicKeysReturnsErrorWhenKeysEmpty(t *testing.T) {
 	}
 }
 
+func TestNewDocumentFromBytesReturnsErrorWhenPayloadInvalid(t *testing.T) {
+	_, err := newDocumentFromBytes([]byte(`{`))
+	if err == nil {
+		t.Fatal("newDocumentFromBytes returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidKeySet) {
+		t.Fatalf("error = %v, want ErrInvalidKeySet", err)
+	}
+}
+
 func TestDocumentPublicKeysReturnsErrorWhenDuplicateKeyID(t *testing.T) {
 	privateKey := generateRSAKey(t)
 	keyValue := newRSAKey("key-1", &privateKey.PublicKey)
@@ -65,6 +76,24 @@ func TestDocumentPublicKeysIgnoresUnsupportedKeys(t *testing.T) {
 
 	if !equalPublicKeys(publicKeys["key-1"], &privateKey.PublicKey) {
 		t.Fatal("publicKeys[key-1] does not match the valid RSA key")
+	}
+}
+
+func TestDocumentPublicKeysReturnsErrorWhenNoUsableSigningKeys(t *testing.T) {
+	_, err := (document{
+		Keys: []key{
+			{
+				KeyID:   "ec-key",
+				KeyType: "EC",
+			},
+		},
+	}).publicKeys()
+	if err == nil {
+		t.Fatal("publicKeys returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidKeySet) {
+		t.Fatalf("error = %v, want ErrInvalidKeySet", err)
 	}
 }
 

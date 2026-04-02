@@ -183,10 +183,7 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	authenticateTask, err := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
-	if err != nil {
-		t.Fatalf("NewAuthenticateTask returned error: %v", err)
-	}
+	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
 	handler := NewHandler(internalgateway.NewOrchestrator(authenticateTask))
 
 	router := gin.New()
@@ -226,10 +223,7 @@ func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	authenticateTask, err := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
-	if err != nil {
-		t.Fatalf("NewAuthenticateTask returned error: %v", err)
-	}
+	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
 	handler := NewHandler(internalgateway.NewOrchestrator(authenticateTask))
 
 	router := gin.New()

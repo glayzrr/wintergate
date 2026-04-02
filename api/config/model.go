@@ -27,6 +27,8 @@ type RoutingSection struct {
 
 // Route 하나의 URL 경로와 서비스 매핑을 나타냅니다.
 type Route struct {
-	Path    string `json:"path"`
-	Service string `json:"service"`
+	Path     string `json:"path"`
+	Service  string `json:"service"`
+	ClientIP string `json:"client_ip,omitempty"`
+	Port     int    `json:"port"`
 }

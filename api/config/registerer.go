@@ -28,6 +28,10 @@ func (r *Registerer) AuthRegistry() *authconfig.Registry {
 	return r.authRegistry
 }
 
+func (r *Registerer) RoutingRegistry() *routeconfig.Registry {
+	return r.routingRegistry
+}
+
 // Register 설정 스냅샷 전체를 내부 저장소에 반영합니다.
 func (r *Registerer) Register(snapshot Snapshot) error {
 	authRuntimeConfig, err := r.authRuntimeConfig(snapshot.Auth)
@@ -99,8 +103,10 @@ func (r *Registerer) routingRuntimeConfig(routingSection *RoutingSection) (route
 	entries := make([]routeconfig.Entry, 0, len(routingSection.Routes))
 	for _, routeValue := range routingSection.Routes {
 		entries = append(entries, routeconfig.Entry{
-			Path:    routeValue.Path,
-			Service: routeValue.Service,
+			Path:     routeValue.Path,
+			Service:  routeValue.Service,
+			ClientIP: routeValue.ClientIP,
+			Port:     routeValue.Port,
 		})
 	}
 

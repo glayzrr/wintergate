@@ -17,6 +17,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const testClientIP = "192.0.2.10"
+
 func TestNewRegistererInitializesRegistries(t *testing.T) {
 	registerer := NewRegisterer()
 
@@ -41,8 +43,8 @@ func TestRegisterStoresSnapshotWhenValid(t *testing.T) {
 			RouteServiceHeader:          " X-Wintergate-Service ",
 			RouteUpstreamRequestTimeout: "2s",
 			Routes: []Route{
-				{Path: " /orders ", Service: " order-service "},
-				{Path: "/payments", Service: "payment-service"},
+				{Path: " /orders ", Service: " order-service ", ClientIP: testClientIP, Port: 8080},
+				{Path: "/payments", Service: "payment-service", ClientIP: testClientIP, Port: 8081},
 			},
 		},
 	})
@@ -61,26 +63,30 @@ func TestRegisterStoresSnapshotWhenValid(t *testing.T) {
 		t.Fatal("JWKS was not copied during registration")
 	}
 
-	routingRuntimeConfig, routingConfigFound := registerer.routingRegistry.Snapshot()
+	routingSnapshot, routingConfigFound := registerer.routingRegistry.Snapshot()
 	if !routingConfigFound {
-		t.Fatal("Snapshot did not return routing config")
+		t.Fatal("Snapshot did not return routing info")
 	}
 
-	if routingRuntimeConfig.RouteServiceHeader != "X-Wintergate-Service" {
-		t.Fatalf("RouteServiceHeader = %q, want %q", routingRuntimeConfig.RouteServiceHeader, "X-Wintergate-Service")
+	if len(routingSnapshot) != 2 {
+		t.Fatalf("len(routingSnapshot) = %d, want %d", len(routingSnapshot), 2)
 	}
 
-	if len(routingRuntimeConfig.Entries) != 2 {
-		t.Fatalf("len(Entries) = %d, want %d", len(routingRuntimeConfig.Entries), 2)
-	}
-
-	service, found := registerer.routingRegistry.Service("/orders")
+	routeInfo, found := registerer.routingRegistry.Route("/orders")
 	if !found {
-		t.Fatal("Service did not find /orders")
+		t.Fatal("Route did not find /orders")
 	}
 
-	if service != "order-service" {
-		t.Fatalf("service = %q, want %q", service, "order-service")
+	if routeInfo.Service != "order-service" {
+		t.Fatalf("routeInfo.Service = %q, want %q", routeInfo.Service, "order-service")
+	}
+
+	if routeInfo.ClientIP != testClientIP {
+		t.Fatalf("routeInfo.ClientIP = %q, want %q", routeInfo.ClientIP, testClientIP)
+	}
+
+	if routeInfo.Port != 8080 {
+		t.Fatalf("routeInfo.Port = %d, want %d", routeInfo.Port, 8080)
 	}
 }
 
@@ -123,7 +129,7 @@ func TestRegisterReturnsErrorWhenAuthSectionMissing(t *testing.T) {
 			RouteServiceHeader:          "X-Wintergate-Service",
 			RouteUpstreamRequestTimeout: "2s",
 			Routes: []Route{
-				{Path: "/orders", Service: "order-service"},
+				{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
 			},
 		},
 	})
@@ -248,7 +254,7 @@ func TestRegisterReturnsErrorWhenRoutingTimeoutInvalid(t *testing.T) {
 			RouteServiceHeader:          "X-Wintergate-Service",
 			RouteUpstreamRequestTimeout: "bad",
 			Routes: []Route{
-				{Path: "/orders", Service: "order-service"},
+				{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
 			},
 		},
 	})
@@ -291,7 +297,7 @@ func TestRegisterReturnsErrorWhenRoutingRegistryRejectsSnapshot(t *testing.T) {
 			RouteServiceHeader:          "",
 			RouteUpstreamRequestTimeout: "2s",
 			Routes: []Route{
-				{Path: "/orders", Service: "order-service"},
+				{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
 			},
 		},
 	})
@@ -319,7 +325,7 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		DefaultRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service"}]}}`),
+		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service","port":8080}]}}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 
@@ -361,7 +367,7 @@ func validRoutingSection() *RoutingSection {
 		RouteServiceHeader:          "X-Wintergate-Service",
 		RouteUpstreamRequestTimeout: "2s",
 		Routes: []Route{
-			{Path: "/orders", Service: "order-service"},
+			{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
 		},
 	}
 }

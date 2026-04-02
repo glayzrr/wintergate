@@ -19,14 +19,8 @@ type AuthenticateTask struct {
 }
 
 // NewAuthenticateTask Bearer JWT 검증용 AuthenticateTask를 생성합니다.
-func NewAuthenticateTask(decoder TokenDecoder) (*AuthenticateTask, error) {
-	if decoder == nil {
-		return nil, fmt.Errorf("%w: decoder is required", ErrNilTokenDecoder)
-	}
-
-	return &AuthenticateTask{
-		decoder: decoder,
-	}, nil
+func NewAuthenticateTask(decoder TokenDecoder) *AuthenticateTask {
+	return &AuthenticateTask{decoder: decoder}
 }
 
 // Run Authorization 헤더가 있을 때 Bearer JWT를 검증하고 claims를 상태에 기록합니다.

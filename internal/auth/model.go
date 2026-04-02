@@ -12,3 +12,31 @@ type Claims struct {
 	NotBefore time.Time
 	Raw       map[string]any
 }
+
+type tokenHeader struct {
+	Algorithm string `json:"alg"`
+	KeyID     string `json:"kid"`
+}
+
+type decodedClaims struct {
+	Claims
+	hasExpiresAt bool
+	hasIssuedAt  bool
+	hasNotBefore bool
+}
+
+type claimsPayload struct {
+	Audience  audienceClaim `json:"aud"`
+	ExpiresAt numericDate   `json:"exp"`
+	IssuedAt  numericDate   `json:"iat"`
+	Issuer    string        `json:"iss"`
+	NotBefore numericDate   `json:"nbf"`
+	Subject   string        `json:"sub"`
+}
+
+type audienceClaim []string
+
+type numericDate struct {
+	time time.Time
+	set  bool
+}
