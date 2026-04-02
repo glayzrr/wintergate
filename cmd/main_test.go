@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -13,108 +16,39 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestMainReturnsWhenRunSucceeds(t *testing.T) {
-	restoreRunMain := runMain
-	restoreLogError := logError
-	restoreExitProcess := exitProcess
-	t.Cleanup(func() {
-		runMain = restoreRunMain
-		logError = restoreLogError
-		exitProcess = restoreExitProcess
-	})
-
-	logged := false
-	exited := false
-
-	runMain = func() error {
-		return nil
-	}
-	logError = func(string, ...any) {
-		logged = true
-	}
-	exitProcess = func(int) {
-		exited = true
-	}
-
-	main()
-
-	if logged {
-		t.Fatal("main logged error on success")
-	}
-
-	if exited {
-		t.Fatal("main exited on success")
-	}
-}
-
 func TestMainLogsAndExitsWhenRunFails(t *testing.T) {
-	restoreRunMain := runMain
-	restoreLogError := logError
-	restoreExitProcess := exitProcess
-	t.Cleanup(func() {
-		runMain = restoreRunMain
-		logError = restoreLogError
-		exitProcess = restoreExitProcess
-	})
-
-	runErr := errors.New("boom")
-	logged := false
-	exitCode := 0
-
-	runMain = func() error {
-		return runErr
-	}
-	logError = func(msg string, args ...any) {
-		logged = msg == logRunFailed
-	}
-	exitProcess = func(code int) {
-		exitCode = code
+	if os.Getenv("WG_TEST_RUN_MAIN") == "1" {
+		main()
+		t.Fatal("main returned unexpectedly")
 	}
 
-	main()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestMainLogsAndExitsWhenRunFails$")
+	cmd.Env = append(os.Environ(), "WG_TEST_RUN_MAIN=1", "PORT=65536")
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
 
-	if !logged {
-		t.Fatal("main did not log error")
-	}
-
-	if exitCode != 1 {
-		t.Fatalf("exitCode = %d, want %d", exitCode, 1)
-	}
-}
-
-func TestRunReturnsErrorWhenBuildRouterFails(t *testing.T) {
-	restoreBuildRouter := buildRouter
-	t.Cleanup(func() {
-		buildRouter = restoreBuildRouter
-	})
-
-	buildErr := errors.New("router error")
-	buildRouter = func() (*gin.Engine, error) {
-		return nil, buildErr
-	}
-
-	err := run()
+	err := cmd.Run()
 	if err == nil {
-		t.Fatal("run returned nil error")
+		t.Fatal("main subprocess succeeded unexpectedly")
 	}
 
-	if !strings.Contains(err.Error(), "build router") {
-		t.Fatalf("error = %q, want build router context", err.Error())
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("Run returned error type %T, want *exec.ExitError", err)
+	}
+
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("exitCode = %d, want %d", exitErr.ExitCode(), 1)
+	}
+
+	if !strings.Contains(output.String(), logRunFailed) {
+		t.Fatalf("output = %q, want log message %q", output.String(), logRunFailed)
 	}
 }
 
 func TestRunReturnsErrorWhenServerFails(t *testing.T) {
-	restoreBuildRouter := buildRouter
-	restoreRunServer := runServer
-	t.Cleanup(func() {
-		buildRouter = restoreBuildRouter
-		runServer = restoreRunServer
-	})
-
-	buildRouter = newRouter
-	runServer = func(*gin.Engine, string) error {
-		return errors.New("server error")
-	}
+	t.Setenv("PORT", "65536")
 
 	err := run()
 	if err == nil {
@@ -123,33 +57,6 @@ func TestRunReturnsErrorWhenServerFails(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "run gin server") {
 		t.Fatalf("error = %q, want run gin server context", err.Error())
-	}
-}
-
-func TestRunReturnsNilWhenServerStarts(t *testing.T) {
-	restoreBuildRouter := buildRouter
-	restoreRunServer := runServer
-	t.Cleanup(func() {
-		buildRouter = restoreBuildRouter
-		runServer = restoreRunServer
-	})
-
-	called := false
-	buildRouter = newRouter
-	runServer = func(_ *gin.Engine, addr string) error {
-		called = addr == defaultListenAddress
-		return nil
-	}
-
-	t.Setenv("PORT", "")
-
-	err := run()
-	if err != nil {
-		t.Fatalf("run returned error: %v", err)
-	}
-
-	if !called {
-		t.Fatal("runServer was not called with default listen address")
 	}
 }
 

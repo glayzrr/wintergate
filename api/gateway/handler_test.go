@@ -15,30 +15,29 @@ import (
 
 	configapi "wintergate/api/config"
 	responseapi "wintergate/api/response"
+	internalauth "wintergate/internal/auth"
 	authconfig "wintergate/internal/auth/config"
 	internalgateway "wintergate/internal/gateway"
 
 	"github.com/gin-gonic/gin"
 )
 
-func TestNewHandlerInitializesOrchestrator(t *testing.T) {
-	handler := NewHandler()
+func TestNewHandlerUsesInjectedOrchestrator(t *testing.T) {
+	orchestrator := internalgateway.NewOrchestrator()
+	handler := NewHandler(orchestrator)
 	if handler.orchestrator == nil {
 		t.Fatal("handler.orchestrator is nil")
 	}
-}
 
-func TestNewHandlerWithAuthRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
-	_, err := NewHandlerWithAuthRegistry(nil)
-	if err == nil {
-		t.Fatal("NewHandlerWithAuthRegistry returned nil error")
+	if handler.orchestrator != orchestrator {
+		t.Fatal("handler.orchestrator did not use injected orchestrator")
 	}
 }
 
 func TestHandlerReceiveReturnsGatewayIngressResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler := NewHandler()
+	handler := NewHandler(internalgateway.NewOrchestrator())
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -84,7 +83,7 @@ func TestHandlerReceiveReturnsGatewayIngressResponse(t *testing.T) {
 func TestHandlerReceiveLeavesConfigRouteUnclaimed(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler := NewHandler()
+	handler := NewHandler(internalgateway.NewOrchestrator())
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -110,15 +109,12 @@ func TestHandlerReceiveLeavesConfigRouteUnclaimed(t *testing.T) {
 func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler := NewHandler()
-
 	orchestrator := internalgateway.NewOrchestrator(
 		internalgatewayTaskFunc(func(_ context.Context, _ *internalgateway.State) error {
 			return internalgateway.ErrInvalidRequest
 		}),
 	)
-
-	handler.orchestrator = orchestrator
+	handler := NewHandler(orchestrator)
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -144,15 +140,12 @@ func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testin
 func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	handler := NewHandler()
-
 	orchestrator := internalgateway.NewOrchestrator(
 		internalgatewayTaskFunc(func(_ context.Context, _ *internalgateway.State) error {
 			return errors.New("boom")
 		}),
 	)
-
-	handler.orchestrator = orchestrator
+	handler := NewHandler(orchestrator)
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -190,10 +183,11 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	handler, err := NewHandlerWithAuthRegistry(registry)
+	authenticateTask, err := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
 	if err != nil {
-		t.Fatalf("NewHandlerWithAuthRegistry returned error: %v", err)
+		t.Fatalf("NewAuthenticateTask returned error: %v", err)
 	}
+	handler := NewHandler(internalgateway.NewOrchestrator(authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -232,10 +226,11 @@ func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	handler, err := NewHandlerWithAuthRegistry(registry)
+	authenticateTask, err := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
 	if err != nil {
-		t.Fatalf("NewHandlerWithAuthRegistry returned error: %v", err)
+		t.Fatalf("NewAuthenticateTask returned error: %v", err)
 	}
+	handler := NewHandler(internalgateway.NewOrchestrator(authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)

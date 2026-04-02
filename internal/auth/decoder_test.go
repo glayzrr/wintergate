@@ -17,14 +17,14 @@ import (
 )
 
 func TestNewDecoderInitializesRegistry(t *testing.T) {
-	decoder := NewDecoder()
+	decoder := NewDecoder(authconfig.NewRegistry())
 	if decoder.registry == nil {
 		t.Fatal("decoder.registry is nil")
 	}
 }
 
 func TestDecoderReplaceRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
-	decoder := NewDecoder()
+	decoder := NewDecoder(authconfig.NewRegistry())
 
 	err := decoder.ReplaceRegistry(nil)
 	if err == nil {
@@ -60,7 +60,7 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	decoder := NewDecoder()
+	decoder := NewDecoder(authconfig.NewRegistry())
 	if err := decoder.ReplaceRegistry(registry); err != nil {
 		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	decoder := NewDecoder()
+	decoder := NewDecoder(authconfig.NewRegistry())
 	if err := decoder.ReplaceRegistry(registry); err != nil {
 		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	decoder := NewDecoder()
+	decoder := NewDecoder(authconfig.NewRegistry())
 	if err := decoder.ReplaceRegistry(registry); err != nil {
 		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	decoder := NewDecoder()
+	decoder := NewDecoder(authconfig.NewRegistry())
 	if err := decoder.ReplaceRegistry(registry); err != nil {
 		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}

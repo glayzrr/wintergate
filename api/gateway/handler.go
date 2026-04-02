@@ -2,7 +2,6 @@ package gatewayapi
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	configapi "wintergate/api/config"
@@ -19,28 +18,11 @@ type Handler struct {
 	orchestrator *internalgateway.Orchestrator
 }
 
-// NewHandler 게이트웨이 트래픽 수신 Handler를 생성합니다.
-func NewHandler() *Handler {
+// NewHandler 생성된 Orchestrator를 주입받아 게이트웨이 Handler를 생성합니다.
+func NewHandler(orchestrator *internalgateway.Orchestrator) *Handler {
 	return &Handler{
-		orchestrator: internalgateway.NewOrchestrator(),
+		orchestrator: orchestrator,
 	}
-}
-
-// NewHandlerWithAuthRegistry 인증 디코딩 작업이 등록된 게이트웨이 Handler를 생성합니다.
-func NewHandlerWithAuthRegistry(authRegistry *authconfig.Registry) (*Handler, error) {
-	decoder := internalauth.NewDecoder()
-	if err := decoder.ReplaceRegistry(authRegistry); err != nil {
-		return nil, fmt.Errorf("use auth registry: %w", err)
-	}
-
-	authenticateTask, err := internalgateway.NewAuthenticateTask(decoder)
-	if err != nil {
-		return nil, fmt.Errorf("create authenticate task: %w", err)
-	}
-
-	return &Handler{
-		orchestrator: internalgateway.NewOrchestrator(authenticateTask),
-	}, nil
 }
 
 // RegisterRoutes 게이트웨이 트래픽 수신 진입점을 Gin 엔진의 기본 라우트로 등록합니다.

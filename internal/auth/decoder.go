@@ -58,9 +58,9 @@ type numericDate struct {
 }
 
 // NewDecoder JWT 검증용 Decoder를 생성합니다.
-func NewDecoder() *Decoder {
+func NewDecoder(registry *authconfig.Registry) *Decoder {
 	return &Decoder{
-		registry: authconfig.NewRegistry(),
+		registry: registry,
 		now:      time.Now,
 	}
 }
