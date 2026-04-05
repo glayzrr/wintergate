@@ -41,13 +41,6 @@ func (h *Handler) PutSnapshot(ctx *gin.Context) {
 		return
 	}
 
-	if snapshot.Routing != nil {
-		clientIP := ctx.ClientIP()
-		for index := range snapshot.Routing.Routes {
-			snapshot.Routing.Routes[index].ClientIP = clientIP
-		}
-	}
-
 	if err := h.registerer.Register(snapshot); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
 			Success: false,

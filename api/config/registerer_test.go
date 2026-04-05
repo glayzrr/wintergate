@@ -2,7 +2,6 @@ package configapi
 
 import (
 	"bytes"
-	"crypto/rsa"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -12,39 +11,36 @@ import (
 
 	responseapi "wintergate/api/response"
 	authconfig "wintergate/internal/auth/config"
-	routeconfig "wintergate/internal/route/config"
 
 	"github.com/gin-gonic/gin"
 )
 
-const testClientIP = "192.0.2.10"
-
-func TestNewRegistererInitializesRegistries(t *testing.T) {
+func TestNewRegistererInitializesRegistry(t *testing.T) {
 	registerer := NewRegisterer()
 
 	if registerer.authRegistry == nil {
 		t.Fatal("authRegistry is nil")
 	}
-
-	if registerer.routingRegistry == nil {
-		t.Fatal("routingRegistry is nil")
-	}
 }
 
-func TestRegisterStoresSnapshotWhenValid(t *testing.T) {
+func TestRegisterStoresAuthConfigWhenSnapshotValid(t *testing.T) {
 	registerer := NewRegisterer()
-	privateKey := generateRSAKey(t)
-	authSection := validAuthSection(t, privateKey)
+	authSection := validAuthSection(t)
 	originalJWKS := append([]byte(nil), authSection.JWKS...)
 
 	err := registerer.Register(Snapshot{
-		Auth: authSection,
-		Routing: &RoutingSection{
-			RouteServiceHeader:          " X-Wintergate-Service ",
-			RouteUpstreamRequestTimeout: "2s",
-			Routes: []Route{
-				{Path: " /orders ", Service: " order-service ", ClientIP: testClientIP, Port: 8080},
-				{Path: "/payments", Service: "payment-service", ClientIP: testClientIP, Port: 8081},
+		Auth:   authSection,
+		Routes: validRoutesSection(),
+		RateLimit: []RateLimitEndpoint{
+			{
+				Endpoint: Endpoint{
+					Path:    "/api/order",
+					Method:  http.MethodPost,
+					Service: "order-service",
+				},
+				Roles:    []string{"anyone"},
+				Duration: "1m",
+				Limit:    10,
 			},
 		},
 	})
@@ -63,30 +59,8 @@ func TestRegisterStoresSnapshotWhenValid(t *testing.T) {
 		t.Fatal("JWKS was not copied during registration")
 	}
 
-	routingSnapshot, routingConfigFound := registerer.routingRegistry.Snapshot()
-	if !routingConfigFound {
-		t.Fatal("Snapshot did not return routing info")
-	}
-
-	if len(routingSnapshot) != 2 {
-		t.Fatalf("len(routingSnapshot) = %d, want %d", len(routingSnapshot), 2)
-	}
-
-	routeInfo, found := registerer.routingRegistry.Route("/orders")
-	if !found {
-		t.Fatal("Route did not find /orders")
-	}
-
-	if routeInfo.Service != "order-service" {
-		t.Fatalf("routeInfo.Service = %q, want %q", routeInfo.Service, "order-service")
-	}
-
-	if routeInfo.ClientIP != testClientIP {
-		t.Fatalf("routeInfo.ClientIP = %q, want %q", routeInfo.ClientIP, testClientIP)
-	}
-
-	if routeInfo.Port != 8080 {
-		t.Fatalf("routeInfo.Port = %d, want %d", routeInfo.Port, 8080)
+	if authRuntimeConfig.JWTIssuer != "auth-service" {
+		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
 	}
 }
 
@@ -101,7 +75,7 @@ func TestRegisterStoresHS256SecretWhenValid(t *testing.T) {
 			JWTIssuer:    "auth-service",
 			JWTSecret:    " shared-secret ",
 		},
-		Routing: validRoutingSection(),
+		Routes: validRoutesSection(),
 	})
 	if err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -125,13 +99,7 @@ func TestRegisterReturnsErrorWhenAuthSectionMissing(t *testing.T) {
 	registerer := NewRegisterer()
 
 	err := registerer.Register(Snapshot{
-		Routing: &RoutingSection{
-			RouteServiceHeader:          "X-Wintergate-Service",
-			RouteUpstreamRequestTimeout: "2s",
-			Routes: []Route{
-				{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
-			},
-		},
+		Routes: validRoutesSection(),
 	})
 	if err == nil {
 		t.Fatal("Register returned nil error")
@@ -153,7 +121,6 @@ func TestRegisterReturnsErrorWhenAuthClockSkewInvalid(t *testing.T) {
 			JWTIssuer:    "auth-service",
 			JWKS:         []byte(`{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}`),
 		},
-		Routing: validRoutingSection(),
 	})
 	if err == nil {
 		t.Fatal("Register returned nil error")
@@ -174,7 +141,6 @@ func TestRegisterReturnsErrorWhenAuthJWKSMissing(t *testing.T) {
 			JWTClockSkew: "1m",
 			JWTIssuer:    "auth-service",
 		},
-		Routing: validRoutingSection(),
 	})
 	if err == nil {
 		t.Fatal("Register returned nil error")
@@ -195,7 +161,6 @@ func TestRegisterReturnsErrorWhenAuthSecretMissingForHS256(t *testing.T) {
 			JWTClockSkew: "1m",
 			JWTIssuer:    "auth-service",
 		},
-		Routing: validRoutingSection(),
 	})
 	if err == nil {
 		t.Fatal("Register returned nil error")
@@ -217,7 +182,6 @@ func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
 			JWTIssuer:    "auth-service",
 			JWKS:         []byte(`{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}`),
 		},
-		Routing: validRoutingSection(),
 	})
 	if err == nil {
 		t.Fatal("Register returned nil error")
@@ -225,88 +189,6 @@ func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
 
 	if !errors.Is(err, authconfig.ErrInvalidConfig) {
 		t.Fatalf("error = %v, want authconfig.ErrInvalidConfig", err)
-	}
-}
-
-func TestRegisterReturnsErrorWhenRoutingSectionMissing(t *testing.T) {
-	registerer := NewRegisterer()
-	privateKey := generateRSAKey(t)
-
-	err := registerer.Register(Snapshot{
-		Auth: validAuthSection(t, privateKey),
-	})
-	if err == nil {
-		t.Fatal("Register returned nil error")
-	}
-
-	if !errors.Is(err, ErrInvalidSnapshot) {
-		t.Fatalf("error = %v, want ErrInvalidSnapshot", err)
-	}
-}
-
-func TestRegisterReturnsErrorWhenRoutingTimeoutInvalid(t *testing.T) {
-	registerer := NewRegisterer()
-	privateKey := generateRSAKey(t)
-
-	err := registerer.Register(Snapshot{
-		Auth: validAuthSection(t, privateKey),
-		Routing: &RoutingSection{
-			RouteServiceHeader:          "X-Wintergate-Service",
-			RouteUpstreamRequestTimeout: "bad",
-			Routes: []Route{
-				{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
-			},
-		},
-	})
-	if err == nil {
-		t.Fatal("Register returned nil error")
-	}
-
-	if !strings.Contains(err.Error(), "parse route upstream timeout") {
-		t.Fatalf("error = %q, want route upstream timeout context", err.Error())
-	}
-}
-
-func TestRegisterReturnsErrorWhenRoutesMissing(t *testing.T) {
-	registerer := NewRegisterer()
-	privateKey := generateRSAKey(t)
-
-	err := registerer.Register(Snapshot{
-		Auth: validAuthSection(t, privateKey),
-		Routing: &RoutingSection{
-			RouteServiceHeader:          "X-Wintergate-Service",
-			RouteUpstreamRequestTimeout: "2s",
-		},
-	})
-	if err == nil {
-		t.Fatal("Register returned nil error")
-	}
-
-	if !errors.Is(err, ErrInvalidSnapshot) {
-		t.Fatalf("error = %v, want ErrInvalidSnapshot", err)
-	}
-}
-
-func TestRegisterReturnsErrorWhenRoutingRegistryRejectsSnapshot(t *testing.T) {
-	registerer := NewRegisterer()
-	privateKey := generateRSAKey(t)
-
-	err := registerer.Register(Snapshot{
-		Auth: validAuthSection(t, privateKey),
-		Routing: &RoutingSection{
-			RouteServiceHeader:          "",
-			RouteUpstreamRequestTimeout: "2s",
-			Routes: []Route{
-				{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
-			},
-		},
-	})
-	if err == nil {
-		t.Fatal("Register returned nil error")
-	}
-
-	if !errors.Is(err, routeconfig.ErrInvalidConfig) {
-		t.Fatalf("error = %v, want routeconfig.ErrInvalidConfig", err)
 	}
 }
 
@@ -325,7 +207,7 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		DefaultRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service","port":8080}]}}`),
+		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"public":[{"path":"/api/view/**","method":"GET","service":"order-service"}],"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 
@@ -350,8 +232,10 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	}
 }
 
-func validAuthSection(t *testing.T, privateKey *rsa.PrivateKey) *AuthSection {
+func validAuthSection(t *testing.T) *AuthSection {
 	t.Helper()
+
+	privateKey := generateRSAKey(t)
 
 	return &AuthSection{
 		JWTAlgorithm: "RS256",
@@ -362,12 +246,29 @@ func validAuthSection(t *testing.T, privateKey *rsa.PrivateKey) *AuthSection {
 	}
 }
 
-func validRoutingSection() *RoutingSection {
-	return &RoutingSection{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: "2s",
-		Routes: []Route{
-			{Path: "/orders", Service: "order-service", ClientIP: testClientIP, Port: 8080},
+func validRoutesSection() *RoutesSection {
+	return &RoutesSection{
+		Public: []Endpoint{
+			{
+				Path:    "/api/view/**",
+				Method:  http.MethodGet,
+				Service: "order-service",
+			},
+		},
+		Protected: []ProtectedEndpoint{
+			{
+				Endpoint: Endpoint{
+					Path:    "/api/order",
+					Method:  http.MethodPost,
+					Service: "order-service",
+				},
+				Roles: []string{"ADMIN", "OPS"},
+				TimeWindow: &TimeWindow{
+					Start:    "09:00",
+					End:      "18:00",
+					Timezone: "Asia/Seoul",
+				},
+			},
 		},
 	}
 }

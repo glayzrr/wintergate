@@ -95,7 +95,7 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 	configRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/api/config",
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"shared-secret"},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service","port":8080}]}}`),
+		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"shared-secret"},"routes":{"public":[{"path":"/api/view/**","method":"GET","service":"order-service"}],"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
 	)
 	configRequest.Header.Set("Content-Type", "application/json")
 	configRequest.RemoteAddr = "192.0.2.10:43123"

@@ -6,30 +6,23 @@ import (
 	"time"
 
 	authconfig "wintergate/internal/auth/config"
-	routeconfig "wintergate/internal/route/config"
 )
 
 // Registerer 설정 스냅샷을 받아 필요한 내부 저장소에 일괄 등록합니다.
 type Registerer struct {
-	authRegistry    *authconfig.Registry
-	routingRegistry *routeconfig.Registry
+	authRegistry *authconfig.Registry
 }
 
 // NewRegisterer 설정 스냅샷 등록용 Registerer를 생성합니다.
 func NewRegisterer() *Registerer {
 	return &Registerer{
-		authRegistry:    authconfig.NewRegistry(),
-		routingRegistry: routeconfig.NewRegistry(),
+		authRegistry: authconfig.NewRegistry(),
 	}
 }
 
 // AuthRegistry 인증 런타임 설정 저장소를 반환합니다.
 func (r *Registerer) AuthRegistry() *authconfig.Registry {
 	return r.authRegistry
-}
-
-func (r *Registerer) RoutingRegistry() *routeconfig.Registry {
-	return r.routingRegistry
 }
 
 // Register 설정 스냅샷 전체를 내부 저장소에 반영합니다.
@@ -39,17 +32,8 @@ func (r *Registerer) Register(snapshot Snapshot) error {
 		return err
 	}
 
-	routingRuntimeConfig, err := r.routingRuntimeConfig(snapshot.Routing)
-	if err != nil {
-		return err
-	}
-
 	if err := r.authRegistry.Register(authRuntimeConfig); err != nil {
 		return fmt.Errorf("register auth config: %w", err)
-	}
-
-	if err := r.routingRegistry.Register(routingRuntimeConfig); err != nil {
-		return fmt.Errorf("register routing config: %w", err)
 	}
 
 	return nil
@@ -83,36 +67,5 @@ func (r *Registerer) authRuntimeConfig(authSection *AuthSection) (authconfig.Run
 		JWTIssuer:    authSection.JWTIssuer,
 		JWTSecret:    []byte(strings.TrimSpace(authSection.JWTSecret)),
 		JWKS:         append([]byte(nil), authSection.JWKS...),
-	}, nil
-}
-
-func (r *Registerer) routingRuntimeConfig(routingSection *RoutingSection) (routeconfig.RuntimeConfig, error) {
-	if routingSection == nil {
-		return routeconfig.RuntimeConfig{}, fmt.Errorf("%w: routing section is required", ErrInvalidSnapshot)
-	}
-
-	routeUpstreamTimeout, err := time.ParseDuration(routingSection.RouteUpstreamRequestTimeout)
-	if err != nil {
-		return routeconfig.RuntimeConfig{}, fmt.Errorf("parse route upstream timeout: %w", err)
-	}
-
-	if len(routingSection.Routes) == 0 {
-		return routeconfig.RuntimeConfig{}, fmt.Errorf("%w: routing routes are required", ErrInvalidSnapshot)
-	}
-
-	entries := make([]routeconfig.Entry, 0, len(routingSection.Routes))
-	for _, routeValue := range routingSection.Routes {
-		entries = append(entries, routeconfig.Entry{
-			Path:     routeValue.Path,
-			Service:  routeValue.Service,
-			ClientIP: routeValue.ClientIP,
-			Port:     routeValue.Port,
-		})
-	}
-
-	return routeconfig.RuntimeConfig{
-		RouteServiceHeader:          routingSection.RouteServiceHeader,
-		RouteUpstreamRequestTimeout: routeUpstreamTimeout,
-		Entries:                     entries,
 	}, nil
 }

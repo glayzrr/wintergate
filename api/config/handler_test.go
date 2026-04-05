@@ -28,7 +28,7 @@ func TestNewHandlerReturnsErrorWhenRegistrarNil(t *testing.T) {
 	}
 }
 
-func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
+func TestHandlerPutSnapshotRegistersJWKSWhenPayloadValid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	privateKey := generateRSAKey(t)
@@ -47,7 +47,7 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		DefaultRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`},"routing":{"route_service_header":"X-Wintergate-Service","route_upstream_request_timeout":"2s","routes":[{"path":"/orders","service":"order-service","port":8080}]}}`),
+		strings.NewReader(`{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`},"routes":{"public":[{"path":"/api/view/**","method":"GET","service":"order-service"}],"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	request.RemoteAddr = testClientIP + ":43123"
@@ -84,32 +84,6 @@ func TestHandlerPutSnapshotRegistersJWKSAndRoutes(t *testing.T) {
 
 	if authRuntimeConfig.JWTIssuer != "auth-service" {
 		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
-	}
-
-	routeInfo, found := registerer.routingRegistry.Route("/orders")
-	if !found {
-		t.Fatal("Route did not find /orders")
-	}
-
-	if routeInfo.Service != "order-service" {
-		t.Fatalf("routeInfo.Service = %q, want %q", routeInfo.Service, "order-service")
-	}
-
-	if routeInfo.ClientIP != testClientIP {
-		t.Fatalf("routeInfo.ClientIP = %q, want %q", routeInfo.ClientIP, testClientIP)
-	}
-
-	if routeInfo.Port != 8080 {
-		t.Fatalf("routeInfo.Port = %d, want %d", routeInfo.Port, 8080)
-	}
-
-	routingSnapshot, routingConfigFound := registerer.routingRegistry.Snapshot()
-	if !routingConfigFound {
-		t.Fatal("Snapshot did not return routing info")
-	}
-
-	if len(routingSnapshot) != 1 {
-		t.Fatalf("len(routingSnapshot) = %d, want %d", len(routingSnapshot), 1)
 	}
 }
 

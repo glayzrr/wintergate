@@ -4,8 +4,9 @@ import "encoding/json"
 
 // Snapshot 외부에서 전달하는 Wintergate 설정 스냅샷입니다.
 type Snapshot struct {
-	Auth    *AuthSection    `json:"auth,omitempty"`
-	Routing *RoutingSection `json:"routing,omitempty"`
+	Auth      *AuthSection        `json:"auth,omitempty"`
+	Routes    *RoutesSection      `json:"routes,omitempty"`
+	RateLimit []RateLimitEndpoint `json:"rate_limit,omitempty"`
 }
 
 // AuthSection 인증 관련 설정 섹션입니다.
@@ -18,17 +19,37 @@ type AuthSection struct {
 	JWKS         json.RawMessage `json:"jwks"`
 }
 
-// RoutingSection 라우팅 관련 설정 섹션입니다.
-type RoutingSection struct {
-	RouteServiceHeader             string  `json:"route_service_header"`
-	RouteUpstreamRequestTimeout    string  `json:"route_upstream_request_timeout"`
-	Routes                         []Route `json:"routes"`
+// RoutesSection 공개 및 보호 엔드포인트 설정을 함께 보관합니다.
+type RoutesSection struct {
+	Public    []Endpoint          `json:"public"`
+	Protected []ProtectedEndpoint `json:"protected"`
 }
 
-// Route 하나의 URL 경로와 서비스 매핑을 나타냅니다.
-type Route struct {
-	Path     string `json:"path"`
-	Service  string `json:"service"`
-	ClientIP string `json:"client_ip,omitempty"`
-	Port     int    `json:"port"`
+// ProtectedEndpoint 추가 인가 조건이 필요한 엔드포인트를 표현합니다.
+type ProtectedEndpoint struct {
+	Endpoint
+	Roles      []string    `json:"roles"`
+	TimeWindow *TimeWindow `json:"time_window,omitempty"`
+}
+
+// RateLimitEndpoint 요청 제한 규칙이 적용되는 엔드포인트를 표현합니다.
+type RateLimitEndpoint struct {
+	Endpoint
+	Roles    []string `json:"roles"`
+	Duration string   `json:"duration"`
+	Limit    int      `json:"limit"`
+}
+
+// TimeWindow 엔드포인트 접근 가능 시간을 표현합니다.
+type TimeWindow struct {
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	Timezone string `json:"timezone"`
+}
+
+// Endpoint 라우트 매칭에 필요한 기본 엔드포인트 정보를 표현합니다.
+type Endpoint struct {
+	Path    string `json:"path"`
+	Method  string `json:"method"`
+	Service string `json:"service"`
 }
