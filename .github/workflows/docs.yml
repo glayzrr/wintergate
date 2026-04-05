@@ -1,0 +1,37 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main # main 브랜치에 푸시될 때 실행됩니다.
+
+permissions:
+  contents: write # gh-pages 브랜치에 쓰기 권한이 필요합니다.
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26' # 프로젝트에 사용하는 Go 버전을 입력합니다.
+
+      - name: Install gomarkdoc
+        run: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
+
+      - name: Generate Documentation
+        run: |
+          # 프로젝트 전체의 주석을 마크다운으로 변환하여 docs 디렉토리에 저장합니다.
+          mkdir -p docs
+          gomarkdoc ./... > docs/DOCUMENTATION.md
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs # 문서가 생성된 디렉토리입니다.
+          publish_branch: gh-pages # 문서를 배포할 브랜치입니다.
