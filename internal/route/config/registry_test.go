@@ -3,65 +3,51 @@ package config
 import (
 	"errors"
 	"testing"
-	"time"
 )
 
 func TestRegistryRegisterStoresRuntimeConfigAndEntries(t *testing.T) {
 	registry := NewRegistry()
 
 	err := registry.Register(RuntimeConfig{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: 2 * time.Second,
 		Entries: []Entry{
-			{Path: "/orders", Service: "order-service", ClientIP: "192.0.2.10", Port: 8080},
-			{Path: "/users", Service: "user-service", ClientIP: "192.0.2.11", Port: 8081},
+			{Path: "/orders", Service: "order-service", HttpMethod: "get", Roles: []string{"ADMIN"}},
+			{Path: "/orders/history", Service: "order-service", HttpMethod: "GET", Roles: []string{"OPS"}},
+			{Path: "/users", Service: "user-service", HttpMethod: "POST"},
 		},
 	})
 	if err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	routeInfo, found := registry.Route("/orders")
+	routeInfos, found := registry.RouteInfos("order-service")
 	if !found {
-		t.Fatal("Route did not find /orders")
+		t.Fatal("RouteInfos did not find order-service")
 	}
 
-	if routeInfo.Service != "order-service" {
-		t.Fatalf("routeInfo.Service = %q, want %q", routeInfo.Service, "order-service")
+	if len(routeInfos) != 2 {
+		t.Fatalf("len(routeInfos) = %d, want %d", len(routeInfos), 2)
 	}
 
-	if routeInfo.ClientIP != "192.0.2.10" {
-		t.Fatalf("routeInfo.ClientIP = %q, want %q", routeInfo.ClientIP, "192.0.2.10")
+	if routeInfos[0].Path != "/orders" {
+		t.Fatalf("routeInfos[0].Path = %q, want %q", routeInfos[0].Path, "/orders")
 	}
 
-	snapshot, found := registry.Snapshot()
-	if !found {
-		t.Fatal("Snapshot did not return routing info")
+	if routeInfos[0].HttpMethod != "GET" {
+		t.Fatalf("routeInfos[0].HttpMethod = %q, want %q", routeInfos[0].HttpMethod, "GET")
 	}
 
-	if len(snapshot) != 2 {
-		t.Fatalf("len(snapshot) = %d, want %d", len(snapshot), 2)
-	}
-
-	snapshotRoute, found := snapshot["/orders"]
-	if !found {
-		t.Fatal("snapshot did not contain /orders")
-	}
-
-	if snapshotRoute.Port != 8080 {
-		t.Fatalf("snapshotRoute.Port = %d, want %d", snapshotRoute.Port, 8080)
+	if len(routeInfos[0].Roles) != 1 || routeInfos[0].Roles[0] != "ADMIN" {
+		t.Fatalf("routeInfos[0].Roles = %#v, want %#v", routeInfos[0].Roles, []string{"ADMIN"})
 	}
 }
 
-func TestRegistryRegisterReturnsErrorWhenPathDuplicated(t *testing.T) {
+func TestRegistryRegisterReturnsErrorWhenServiceRouteDuplicated(t *testing.T) {
 	registry := NewRegistry()
 
 	err := registry.Register(RuntimeConfig{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: 2 * time.Second,
 		Entries: []Entry{
-			{Path: "/orders", Service: "order-service", ClientIP: "192.0.2.10", Port: 8080},
-			{Path: "/orders", Service: "billing-service", ClientIP: "192.0.2.11", Port: 8081},
+			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
+			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
 		},
 	})
 	if err == nil {
@@ -73,14 +59,12 @@ func TestRegistryRegisterReturnsErrorWhenPathDuplicated(t *testing.T) {
 	}
 }
 
-func TestRegistryRegisterReturnsErrorWhenPortMissing(t *testing.T) {
+func TestRegistryRegisterReturnsErrorWhenHTTPMethodMissing(t *testing.T) {
 	registry := NewRegistry()
 
 	err := registry.Register(RuntimeConfig{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: 2 * time.Second,
 		Entries: []Entry{
-			{Path: "/orders", Service: "order-service", ClientIP: "192.0.2.10"},
+			{Path: "/orders", Service: "order-service"},
 		},
 	})
 	if err == nil {

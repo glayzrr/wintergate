@@ -128,6 +128,10 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 		"exp": currentTime.Add(time.Minute).Unix(),
 		"iat": currentTime.Add(-time.Second).Unix(),
 		"iss": "auth-service",
+		"roles": []string{
+			"ADMIN",
+			"OPS",
+		},
 		"sub": "user-1",
 	})
 
@@ -146,6 +150,10 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 
 	if len(claims.Audience) != 1 || claims.Audience[0] != "wintergate" {
 		t.Fatalf("claims.Audience = %#v, want [wintergate]", claims.Audience)
+	}
+
+	if len(claims.Roles) != 2 || claims.Roles[0] != "ADMIN" || claims.Roles[1] != "OPS" {
+		t.Fatalf("claims.Roles = %#v, want [ADMIN OPS]", claims.Roles)
 	}
 }
 

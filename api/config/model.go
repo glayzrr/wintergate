@@ -19,10 +19,9 @@ type AuthSection struct {
 	JWKS         json.RawMessage `json:"jwks"`
 }
 
-// RoutesSection 공개 및 보호 엔드포인트 설정을 함께 보관합니다.
+// RoutesSection 보호 엔드포인트 설정을 보관합니다.
 type RoutesSection struct {
-	Public    []Endpoint          `json:"public"`
-	Protected []ProtectedEndpoint `json:"protected"`
+	Protected []ProtectedEndpoint
 }
 
 // ProtectedEndpoint 추가 인가 조건이 필요한 엔드포인트를 표현합니다.

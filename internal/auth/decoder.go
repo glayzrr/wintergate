@@ -161,6 +161,7 @@ func decodeClaims(payload []byte) (decodedClaims, error) {
 			Subject:   claims.Subject,
 			Issuer:    claims.Issuer,
 			Audience:  []string(claims.Audience),
+			Roles:     append([]string(nil), claims.Roles...),
 			ExpiresAt: claims.ExpiresAt.time,
 			IssuedAt:  claims.IssuedAt.time,
 			NotBefore: claims.NotBefore.time,

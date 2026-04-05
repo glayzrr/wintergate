@@ -21,6 +21,10 @@ func TestNewRegistererInitializesRegistry(t *testing.T) {
 	if registerer.authRegistry == nil {
 		t.Fatal("authRegistry is nil")
 	}
+
+	if registerer.routeRegistry == nil {
+		t.Fatal("routeRegistry is nil")
+	}
 }
 
 func TestRegisterStoresAuthConfigWhenSnapshotValid(t *testing.T) {
@@ -61,6 +65,19 @@ func TestRegisterStoresAuthConfigWhenSnapshotValid(t *testing.T) {
 
 	if authRuntimeConfig.JWTIssuer != "auth-service" {
 		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
+	}
+
+	routeInfos, found := registerer.routeRegistry.RouteInfos("order-service")
+	if !found {
+		t.Fatal("RouteInfos did not return registered route info")
+	}
+
+	if len(routeInfos) != 1 {
+		t.Fatalf("len(routeInfos) = %d, want %d", len(routeInfos), 1)
+	}
+
+	if routeInfos[0].Path != "/api/order" {
+		t.Fatalf("routeInfos[0].Path = %q, want %q", routeInfos[0].Path, "/api/order")
 	}
 }
 
@@ -207,7 +224,7 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		DefaultRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"public":[{"path":"/api/view/**","method":"GET","service":"order-service"}],"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
+		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 
@@ -248,13 +265,6 @@ func validAuthSection(t *testing.T) *AuthSection {
 
 func validRoutesSection() *RoutesSection {
 	return &RoutesSection{
-		Public: []Endpoint{
-			{
-				Path:    "/api/view/**",
-				Method:  http.MethodGet,
-				Service: "order-service",
-			},
-		},
 		Protected: []ProtectedEndpoint{
 			{
 				Endpoint: Endpoint{

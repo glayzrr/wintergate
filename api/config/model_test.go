@@ -8,7 +8,7 @@ import (
 func TestSnapshotUnmarshalParsesRoutesAndRateLimit(t *testing.T) {
 	var snapshot Snapshot
 
-	err := json.Unmarshal([]byte(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"},"routes":{"public":[{"path":"/api/view/**","method":"GET","service":"order-service"}],"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}},{"path":"/v3/api-docs/**","method":"GET","service":"order-service","roles":["ADMIN"]}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`), &snapshot)
+	err := json.Unmarshal([]byte(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}},{"path":"/v3/api-docs/**","method":"GET","service":"order-service","roles":["ADMIN"]}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`), &snapshot)
 	if err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
@@ -21,16 +21,8 @@ func TestSnapshotUnmarshalParsesRoutesAndRateLimit(t *testing.T) {
 		t.Fatal("snapshot.Routes is nil")
 	}
 
-	if len(snapshot.Routes.Public) != 1 {
-		t.Fatalf("len(snapshot.Routes.Public) = %d, want %d", len(snapshot.Routes.Public), 1)
-	}
-
 	if len(snapshot.Routes.Protected) != 2 {
 		t.Fatalf("len(snapshot.Routes.Protected) = %d, want %d", len(snapshot.Routes.Protected), 2)
-	}
-
-	if snapshot.Routes.Public[0].Method != "GET" {
-		t.Fatalf("snapshot.Routes.Public[0].Method = %q, want %q", snapshot.Routes.Public[0].Method, "GET")
 	}
 
 	if snapshot.Routes.Protected[0].TimeWindow == nil {

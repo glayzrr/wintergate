@@ -8,33 +8,30 @@ import (
 
 // Registry 라우팅 런타임 설정과 엔트리를 메모리에 보관합니다.
 type Registry struct {
-	mu        sync.RWMutex
-	routeInfo map[string]RouteInfo
-	set       bool
+	routes map[string]routes
+
+	// routes의 경쟁조건을 막기 위한 락입니다.
+	mu sync.RWMutex
+}
+
+type routes struct {
+	infos []RegistryRouteInfo
 }
 
 // NewRegistry 빈 라우팅 설정 Registry를 생성합니다.
 func NewRegistry() *Registry {
 	return &Registry{
-		routeInfo: make(map[string]RouteInfo),
+		routes: make(map[string]routes),
 	}
 }
 
 // Register 전달받은 라우팅 설정과 엔트리로 현재 값을 교체합니다.
 func (r *Registry) Register(cfg RuntimeConfig) error {
-	if strings.TrimSpace(cfg.RouteServiceHeader) == "" {
-		return fmt.Errorf("%w: route_service_header is required", ErrInvalidConfig)
-	}
-
-	if cfg.RouteUpstreamRequestTimeout <= 0 {
-		return fmt.Errorf("%w: route_upstream_request_timeout must be greater than zero", ErrInvalidConfig)
-	}
-
 	if len(cfg.Entries) == 0 {
 		return fmt.Errorf("%w: entries are required", ErrInvalidConfig)
 	}
 
-	registeredRoutes := make(map[string]RouteInfo, len(cfg.Entries))
+	registeredRoutes := make(map[string]routes, len(cfg.Entries))
 	for _, entry := range cfg.Entries {
 		path := strings.TrimSpace(entry.Path)
 		if path == "" {
@@ -46,66 +43,79 @@ func (r *Registry) Register(cfg RuntimeConfig) error {
 			return fmt.Errorf("%w: service is required for path %q", ErrInvalidConfig, path)
 		}
 
-		clientIP := strings.TrimSpace(entry.ClientIP)
-		if clientIP == "" {
-			return fmt.Errorf("%w: client ip is required for service %q", ErrInvalidConfig, service)
+		httpMethod := strings.ToUpper(strings.TrimSpace(entry.HttpMethod))
+		if httpMethod == "" {
+			return fmt.Errorf("%w: http method is required for service %q", ErrInvalidConfig, service)
 		}
 
-		if entry.Port <= 0 {
-			return fmt.Errorf("%w: port must be greater than zero for path %q", ErrInvalidConfig, path)
+		roles, err := normalizedRoles(entry.Roles)
+		if err != nil {
+			return fmt.Errorf("normalize roles: %w", err)
 		}
 
-		if _, exists := registeredRoutes[path]; exists {
-			return fmt.Errorf("%w: duplicate path %q", ErrInvalidConfig, path)
+		serviceRoutes := registeredRoutes[service]
+		if hasRouteInfo(serviceRoutes.infos, path, httpMethod) {
+			return fmt.Errorf("%w: duplicate route for service %q", ErrInvalidConfig, service)
 		}
 
-		registeredRoutes[path] = RouteInfo{
-			Service:  service,
-			ClientIP: clientIP,
-			Port:     entry.Port,
-		}
+		serviceRoutes.infos = append(serviceRoutes.infos, RegistryRouteInfo{
+			Path:       path,
+			HttpMethod: httpMethod,
+			Roles:      roles,
+		})
+		registeredRoutes[service] = serviceRoutes
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.routeInfo = registeredRoutes
-	r.set = true
+	r.routes = registeredRoutes
 
 	return nil
 }
 
-// Route 지정한 경로에 대응하는 서비스 이름, IP, 포트를 반환합니다.
-func (r *Registry) Route(path string) (RouteInfo, bool) {
-	trimmedPath := strings.TrimSpace(path)
-	if trimmedPath == "" {
-		return RouteInfo{}, false
-	}
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	routeInfo, found := r.routeInfo[trimmedPath]
-	if !found {
-		return RouteInfo{}, false
-	}
-
-	return routeInfo, true
-}
-
-// Snapshot 현재 등록된 라우팅 정보의 사본을 반환합니다.
-func (r *Registry) Snapshot() (map[string]RouteInfo, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if !r.set {
+// RouteInfos 지정한 서비스에 대응하는 라우팅 정보 목록을 반환합니다.
+func (r *Registry) RouteInfos(service string) ([]RouteInfo, bool) {
+	trimmedService := strings.TrimSpace(service)
+	if trimmedService == "" {
 		return nil, false
 	}
 
-	snapshot := make(map[string]RouteInfo, len(r.routeInfo))
-	for path, routeInfo := range r.routeInfo {
-		snapshot[path] = routeInfo
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	serviceRoutes, found := r.routes[trimmedService]
+	if !found {
+		return nil, false
 	}
 
-	return snapshot, true
+	return toRouteInfos(serviceRoutes.infos), true
+}
+
+func normalizedRoles(roles []string) ([]string, error) {
+	if len(roles) == 0 {
+		return nil, nil
+	}
+
+	normalized := make([]string, 0, len(roles))
+	for _, role := range roles {
+		trimmedRole := strings.TrimSpace(role)
+		if trimmedRole == "" {
+			return nil, fmt.Errorf("%w: role is required", ErrInvalidConfig)
+		}
+
+		normalized = append(normalized, trimmedRole)
+	}
+
+	return normalized, nil
+}
+
+func hasRouteInfo(routeInfos []RegistryRouteInfo, path string, httpMethod string) bool {
+	for _, routeInfo := range routeInfos {
+		if routeInfo.Path == path && routeInfo.HttpMethod == httpMethod {
+			return true
+		}
+	}
+
+	return false
 }

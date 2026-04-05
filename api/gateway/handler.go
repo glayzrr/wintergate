@@ -41,7 +41,8 @@ func (h *Handler) Receive(ctx *gin.Context) {
 		return
 	}
 
-	result, err := h.orchestrator.Receive(ctx.Request.Context(), internalgateway.Request{
+	err := h.orchestrator.Receive(ctx.Request.Context(), internalgateway.Request{
+		Service:             ctx.GetHeader(requestHeaderService),
 		Method:              ctx.Request.Method,
 		Path:                requestPath,
 		AuthorizationHeader: ctx.GetHeader("Authorization"),
@@ -59,9 +60,9 @@ func (h *Handler) Receive(ctx *gin.Context) {
 		Success: true,
 		Message: responseReceiveSuccess,
 		Data: ReceiveResponse{
-			Received: result.Received,
-			Method:   result.Method,
-			Path:     result.Path,
+			Received: true,
+			Method:   ctx.Request.Method,
+			Path:     requestPath,
 		},
 	})
 }

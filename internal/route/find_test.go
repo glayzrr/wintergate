@@ -3,22 +3,24 @@ package route
 import (
 	"errors"
 	"testing"
-	"time"
 
 	routeconfig "wintergate/internal/route/config"
 )
 
-func TestRouterRouteReturnsJoinedAddress(t *testing.T) {
+func TestRouterRouteReturnsRouteInfos(t *testing.T) {
 	registry := routeconfig.NewRegistry()
 	if err := registry.Register(routeconfig.RuntimeConfig{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: 2 * time.Second,
 		Entries: []routeconfig.Entry{
 			{
-				Path:     "/orders",
-				Service:  "order-service",
-				ClientIP: "192.0.2.10",
-				Port:     8080,
+				Path:       "/orders",
+				Service:    "order-service",
+				HttpMethod: "GET",
+				Roles:      []string{"ADMIN"},
+			},
+			{
+				Path:       "/orders/history",
+				Service:    "order-service",
+				HttpMethod: "POST",
 			},
 		},
 	}); err != nil {
@@ -27,13 +29,17 @@ func TestRouterRouteReturnsJoinedAddress(t *testing.T) {
 
 	router := NewRouter(registry)
 
-	addr, err := router.Route("/orders")
+	routeInfos, err := router.Route("order-service")
 	if err != nil {
 		t.Fatalf("Route returned error: %v", err)
 	}
 
-	if addr != "192.0.2.10:8080/orders" {
-		t.Fatalf("addr = %q, want %q", addr, "192.0.2.10:8080/orders")
+	if len(routeInfos) != 2 {
+		t.Fatalf("len(routeInfos) = %d, want %d", len(routeInfos), 2)
+	}
+
+	if routeInfos[0].Path != "/orders" {
+		t.Fatalf("routeInfos[0].Path = %q, want %q", routeInfos[0].Path, "/orders")
 	}
 }
 
@@ -53,14 +59,11 @@ func TestRouterReplaceRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
 func TestRouterReplaceRegistryUsesReplacement(t *testing.T) {
 	replacement := routeconfig.NewRegistry()
 	if err := replacement.Register(routeconfig.RuntimeConfig{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: 2 * time.Second,
 		Entries: []routeconfig.Entry{
 			{
-				Path:     "/payments",
-				Service:  "payment-service",
-				ClientIP: "192.0.2.20",
-				Port:     8081,
+				Path:       "/payments",
+				Service:    "payment-service",
+				HttpMethod: "GET",
 			},
 		},
 	}); err != nil {
@@ -72,20 +75,20 @@ func TestRouterReplaceRegistryUsesReplacement(t *testing.T) {
 		t.Fatalf("ReplaceRegistry returned error: %v", err)
 	}
 
-	addr, err := router.Route("/payments")
+	routeInfos, err := router.Route("payment-service")
 	if err != nil {
 		t.Fatalf("Route returned error: %v", err)
 	}
 
-	if addr != "192.0.2.20:8081/payments" {
-		t.Fatalf("addr = %q, want %q", addr, "192.0.2.20:8081/payments")
+	if len(routeInfos) != 1 {
+		t.Fatalf("len(routeInfos) = %d, want %d", len(routeInfos), 1)
 	}
 }
 
 func TestRouterRouteReturnsErrorWhenRegistryNil(t *testing.T) {
 	router := NewRouter(nil)
 
-	_, err := router.Route("/orders")
+	_, err := router.Route("order-service")
 	if err == nil {
 		t.Fatal("Route returned nil error")
 	}
@@ -98,14 +101,11 @@ func TestRouterRouteReturnsErrorWhenRegistryNil(t *testing.T) {
 func TestRouterRouteReturnsErrorWhenServiceMissing(t *testing.T) {
 	registry := routeconfig.NewRegistry()
 	if err := registry.Register(routeconfig.RuntimeConfig{
-		RouteServiceHeader:          "X-Wintergate-Service",
-		RouteUpstreamRequestTimeout: 2 * time.Second,
 		Entries: []routeconfig.Entry{
 			{
-				Path:     "/orders",
-				Service:  "order-service",
-				ClientIP: "192.0.2.10",
-				Port:     8080,
+				Path:       "/orders",
+				Service:    "order-service",
+				HttpMethod: "GET",
 			},
 		},
 	}); err != nil {
@@ -114,7 +114,7 @@ func TestRouterRouteReturnsErrorWhenServiceMissing(t *testing.T) {
 
 	router := NewRouter(registry)
 
-	_, err := router.Route("/missing")
+	_, err := router.Route("missing-service")
 	if err == nil {
 		t.Fatal("Route returned nil error")
 	}

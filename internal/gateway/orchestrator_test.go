@@ -9,7 +9,7 @@ import (
 func TestNewOrchestratorReturnsErrorWhenTaskNil(t *testing.T) {
 	orchestrator := NewOrchestrator(nil)
 
-	_, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
 		Method: "POST",
 		Path:   "/orders",
 	})
@@ -25,24 +25,12 @@ func TestNewOrchestratorReturnsErrorWhenTaskNil(t *testing.T) {
 func TestReceiveReturnsRequestMetadataWhenNoTaskRegistered(t *testing.T) {
 	orchestrator := NewOrchestrator()
 
-	result, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
 		Method: " POST ",
 		Path:   " /orders ",
 	})
 	if err != nil {
 		t.Fatalf("Receive returned error: %v", err)
-	}
-
-	if !result.Received {
-		t.Fatal("result.Received = false, want true")
-	}
-
-	if result.Method != "POST" {
-		t.Fatalf("result.Method = %q, want %q", result.Method, "POST")
-	}
-
-	if result.Path != "/orders" {
-		t.Fatalf("result.Path = %q, want %q", result.Path, "/orders")
 	}
 }
 
@@ -53,7 +41,7 @@ func TestReceiveRunsTasksInOrder(t *testing.T) {
 	orchestrator := NewOrchestrator(
 		TaskFunc(func(_ context.Context, state *State) error {
 			firstRan = true
-			state.Result.Method = "PATCH"
+			state.Request.Method = "PATCH"
 			return nil
 		}),
 		TaskFunc(func(_ context.Context, state *State) error {
@@ -62,12 +50,12 @@ func TestReceiveRunsTasksInOrder(t *testing.T) {
 			}
 
 			secondRan = true
-			state.Result.Path = state.Result.Path + "/forwarded"
+			state.Request.Path = state.Request.Path + "/forwarded"
 			return nil
 		}),
 	)
 
-	result, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
 		Method: "POST",
 		Path:   "/orders",
 	})
@@ -78,19 +66,15 @@ func TestReceiveRunsTasksInOrder(t *testing.T) {
 	if !secondRan {
 		t.Fatal("second task did not run")
 	}
-
-	if result.Method != "PATCH" {
-		t.Fatalf("result.Method = %q, want %q", result.Method, "PATCH")
-	}
-
-	if result.Path != "/orders/forwarded" {
-		t.Fatalf("result.Path = %q, want %q", result.Path, "/orders/forwarded")
-	}
 }
 
 func TestReceivePreservesAuthorizationHeader(t *testing.T) {
 	orchestrator := NewOrchestrator(
 		TaskFunc(func(_ context.Context, state *State) error {
+			if state.Request.Service != "order-service" {
+				t.Fatalf("state.Request.Service = %q, want %q", state.Request.Service, "order-service")
+			}
+
 			if state.Request.AuthorizationHeader != "Bearer token-value" {
 				t.Fatalf("state.Request.AuthorizationHeader = %q, want %q", state.Request.AuthorizationHeader, "Bearer token-value")
 			}
@@ -99,7 +83,8 @@ func TestReceivePreservesAuthorizationHeader(t *testing.T) {
 		}),
 	)
 
-	_, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
+		Service:             " order-service ",
 		Method:              "POST",
 		Path:                "/orders",
 		AuthorizationHeader: "Bearer token-value",
@@ -112,7 +97,7 @@ func TestReceivePreservesAuthorizationHeader(t *testing.T) {
 func TestReceiveReturnsErrorWhenMethodMissing(t *testing.T) {
 	orchestrator := NewOrchestrator()
 
-	_, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
 		Path: "/orders",
 	})
 	if err == nil {
@@ -127,7 +112,7 @@ func TestReceiveReturnsErrorWhenMethodMissing(t *testing.T) {
 func TestReceiveReturnsErrorWhenPathMissing(t *testing.T) {
 	orchestrator := NewOrchestrator()
 
-	_, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
 		Method: "POST",
 	})
 	if err == nil {
@@ -148,7 +133,7 @@ func TestReceiveReturnsWrappedTaskError(t *testing.T) {
 		}),
 	)
 
-	_, err := orchestrator.Receive(context.Background(), Request{
+	err := orchestrator.Receive(context.Background(), Request{
 		Method: "POST",
 		Path:   "/orders",
 	})

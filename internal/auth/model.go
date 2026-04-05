@@ -7,6 +7,7 @@ type Claims struct {
 	Subject   string
 	Issuer    string
 	Audience  []string
+	Roles     []string
 	ExpiresAt time.Time
 	IssuedAt  time.Time
 	NotBefore time.Time
@@ -31,6 +32,7 @@ type claimsPayload struct {
 	IssuedAt  numericDate   `json:"iat"`
 	Issuer    string        `json:"iss"`
 	NotBefore numericDate   `json:"nbf"`
+	Roles     []string      `json:"roles"`
 	Subject   string        `json:"sub"`
 }
 

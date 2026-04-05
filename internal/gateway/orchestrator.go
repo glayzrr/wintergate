@@ -24,39 +24,36 @@ func NewOrchestrator(tasks ...Task) *Orchestrator {
 }
 
 // Receive 게이트웨이로 들어온 요청에 대해 등록된 작업을 순차 실행합니다.
-func (o *Orchestrator) Receive(ctx context.Context, request Request) (Result, error) {
+func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
+	trimmedService := strings.TrimSpace(request.Service)
 	trimmedMethod := strings.TrimSpace(request.Method)
 	if trimmedMethod == "" {
-		return Result{}, fmt.Errorf("%w: method is required", ErrInvalidRequest)
+		return fmt.Errorf("%w: method is required", ErrInvalidRequest)
 	}
 
 	trimmedPath := strings.TrimSpace(request.Path)
 	if trimmedPath == "" {
-		return Result{}, fmt.Errorf("%w: path is required", ErrInvalidRequest)
+		return fmt.Errorf("%w: path is required", ErrInvalidRequest)
 	}
 
 	state := &State{
 		Request: Request{
+			Service:             trimmedService,
 			Method:              trimmedMethod,
 			Path:                trimmedPath,
 			AuthorizationHeader: request.AuthorizationHeader,
-		},
-		Result: Result{
-			Received: true,
-			Method:   trimmedMethod,
-			Path:     trimmedPath,
 		},
 	}
 
 	for index, task := range o.tasks {
 		if task == nil {
-			return Result{}, fmt.Errorf("%w: index %d", ErrNilTask, index)
+			return fmt.Errorf("%w: index %d", ErrNilTask, index)
 		}
 
 		if err := task.Run(ctx, state); err != nil {
-			return Result{}, fmt.Errorf("run gateway task: %w", err)
+			return fmt.Errorf("run gateway task: %w", err)
 		}
 	}
 
-	return state.Result, nil
+	return nil
 }
