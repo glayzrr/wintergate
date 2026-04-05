@@ -25,9 +25,8 @@ jobs:
 
       - name: Generate Documentation
         run: |
-          # 프로젝트 전체의 주석을 마크다운으로 변환하여 docs 디렉토리에 저장합니다.
           mkdir -p docs
-          gomarkdoc $(go list ./...) > docs/DOCUMENTATION.md
+          gomarkdoc --exclude-dirs test ./... > docs/DOCUMENTATION.md
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
