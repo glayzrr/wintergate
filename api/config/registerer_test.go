@@ -209,6 +209,78 @@ func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
 	}
 }
 
+func TestRegisterReturnsErrorWhenRouteRegistryRejectsSnapshot(t *testing.T) {
+	registerer := NewRegisterer()
+
+	err := registerer.Register(Snapshot{
+		Auth: &AuthSection{
+			JWTAlgorithm: "HS256",
+			JWTAudience:  "wintergate",
+			JWTClockSkew: "1m",
+			JWTIssuer:    "auth-service",
+			JWTSecret:    "shared-secret",
+		},
+		Routes: &RoutesSection{
+			Protected: []ProtectedEndpoint{
+				{
+					Endpoint: Endpoint{
+						Method:  http.MethodPost,
+						Service: "order-service",
+					},
+					Roles: []string{"ADMIN"},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("Register returned nil error")
+	}
+}
+
+func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
+	registerer := NewRegisterer()
+
+	cfg := registerer.routeRuntimeConfig(&RoutesSection{
+		Protected: []ProtectedEndpoint{
+			{
+				Endpoint: Endpoint{
+					Path:    "/api/order",
+					Method:  http.MethodPost,
+					Service: "order-service",
+				},
+				Roles: []string{"ADMIN", "OPS"},
+			},
+		},
+	})
+
+	if len(cfg.Entries) != 1 {
+		t.Fatalf("len(cfg.Entries) = %d, want %d", len(cfg.Entries), 1)
+	}
+
+	if cfg.Entries[0].Service != "order-service" {
+		t.Fatalf("cfg.Entries[0].Service = %q, want %q", cfg.Entries[0].Service, "order-service")
+	}
+
+	cfg.Entries[0].Roles[0] = "GUEST"
+
+	cfg = registerer.routeRuntimeConfig(&RoutesSection{
+		Protected: []ProtectedEndpoint{
+			{
+				Endpoint: Endpoint{
+					Path:    "/api/order",
+					Method:  http.MethodPost,
+					Service: "order-service",
+				},
+				Roles: []string{"ADMIN", "OPS"},
+			},
+		},
+	})
+
+	if cfg.Entries[0].Roles[0] != "ADMIN" {
+		t.Fatalf("cfg.Entries[0].Roles[0] = %q, want %q", cfg.Entries[0].Roles[0], "ADMIN")
+	}
+}
+
 func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

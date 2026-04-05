@@ -137,6 +137,33 @@ func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testin
 	}
 }
 
+func TestHandlerReceivePassesServiceHeaderToOrchestrator(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	orchestrator := internalgateway.NewOrchestrator(
+		internalgatewayTaskFunc(func(_ context.Context, state *internalgateway.State) error {
+			if state.Request.Service != "order-service" {
+				t.Fatalf("state.Request.Service = %q, want %q", state.Request.Service, "order-service")
+			}
+
+			return nil
+		}),
+	)
+	handler := NewHandler(orchestrator)
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	request.Header.Set(requestHeaderService, "order-service")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
+
 func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -241,6 +268,40 @@ func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
 		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+}
+
+func TestReceiveFailure(t *testing.T) {
+	testCases := []struct {
+		name       string
+		err        error
+		statusCode int
+		message    string
+	}{
+		{name: "invalid request", err: internalgateway.ErrInvalidRequest, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
+		{name: "invalid authorization header", err: internalauth.ErrInvalidAuthorizationHeader, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "invalid audience", err: internalauth.ErrInvalidAudience, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "invalid issuer", err: internalauth.ErrInvalidIssuer, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "invalid signature", err: internalauth.ErrInvalidSignature, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "invalid token", err: internalauth.ErrInvalidToken, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "token expired", err: internalauth.ErrTokenExpired, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "token not yet valid", err: internalauth.ErrTokenNotYetValid, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "unsupported algorithm", err: internalauth.ErrUnsupportedAlgorithm, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "key not found", err: authconfig.ErrKeyNotFound, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
+		{name: "unknown error", err: errors.New("boom"), statusCode: http.StatusInternalServerError, message: responseReceiveFailed},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			statusCode, message := receiveFailure(testCase.err)
+			if statusCode != testCase.statusCode {
+				t.Fatalf("statusCode = %d, want %d", statusCode, testCase.statusCode)
+			}
+
+			if message != testCase.message {
+				t.Fatalf("message = %q, want %q", message, testCase.message)
+			}
+		})
 	}
 }
 
