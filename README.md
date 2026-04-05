@@ -1,6 +1,6 @@
 # Wintergate
 
-문서: 
+문서: https://moodTRBL.github.io/wintergate/DOCUMENTATION.md
 
 Spring 기반 백엔드 프로젝트를 진행하며, 각 서비스에 JWT 검증, 로깅, 메트릭, 보호 로직이 반복적으로 들어가는 구조가 운영 복잡도와 리소스 비용을 높인다고 느꼈습니다. 
 

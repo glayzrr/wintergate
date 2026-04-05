@@ -18,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26' # 프로젝트에 사용하는 Go 버전을 입력합니다.
+          go-version: '1.26'
 
       - name: Install gomarkdoc
         run: go install github.com/princjef/gomarkdoc/cmd/gomarkdoc@latest
@@ -26,11 +26,12 @@ jobs:
       - name: Generate Documentation
         run: |
           mkdir -p docs
-          gomarkdoc --exclude-dirs test ./... > docs/DOCUMENTATION.md
+          # 제외하는 대신, 문서화할 패키지 경로들을 직접 나열합니다.
+          gomarkdoc ./api/... ./cmd/... ./internal/... > docs/DOCUMENTATION.md
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs # 문서가 생성된 디렉토리입니다.
-          publish_branch: gh-pages # 문서를 배포할 브랜치입니다.
+          publish_dir: ./docs
+          publish_branch: gh-pages
