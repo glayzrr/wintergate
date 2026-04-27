@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	responseapi "wintergate/api/response"
+	internalconfig "wintergate/internal/config"
 
 	"github.com/gin-gonic/gin"
 )
@@ -28,13 +29,13 @@ func TestNewHandlerReturnsErrorWhenRegistrarNil(t *testing.T) {
 	}
 }
 
-func TestHandlerPutSnapshotRegistersJWKSWhenPayloadValid(t *testing.T) {
+func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	privateKey := generateRSAKey(t)
 	jwksPayload := mustJWKSJSON("key-1", &privateKey.PublicKey)
 
-	registerer := NewRegisterer()
+	registerer := internalconfig.NewRegisterer()
 
 	handler, err := NewHandler(registerer)
 	if err != nil {
@@ -67,7 +68,7 @@ func TestHandlerPutSnapshotRegistersJWKSWhenPayloadValid(t *testing.T) {
 		t.Fatalf("response.Message = %q, want %q", response.Message, responseRegisterSuccess)
 	}
 
-	publicKey, err := registerer.authRegistry.PublicKey("key-1")
+	publicKey, err := registerer.AuthRegistry().PublicKey("key-1")
 	if err != nil {
 		t.Fatalf("PublicKey returned error: %v", err)
 	}
@@ -76,7 +77,7 @@ func TestHandlerPutSnapshotRegistersJWKSWhenPayloadValid(t *testing.T) {
 		t.Fatal("publicKey does not match the registered key")
 	}
 
-	authRuntimeConfig, authConfigFound := registerer.authRegistry.Snapshot()
+	authRuntimeConfig, authConfigFound := registerer.AuthRegistry().Snapshot()
 	if !authConfigFound {
 		t.Fatal("Snapshot did not return auth config")
 	}
@@ -86,10 +87,10 @@ func TestHandlerPutSnapshotRegistersJWKSWhenPayloadValid(t *testing.T) {
 	}
 }
 
-func TestHandlerPutSnapshotReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
+func TestHandlerEnrollConfigReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registerer := NewRegisterer()
+	registerer := internalconfig.NewRegisterer()
 	handler, err := NewHandler(registerer)
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
@@ -115,6 +116,42 @@ func TestHandlerPutSnapshotReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 
 	if response.Message != responseBindFailed {
 		t.Fatalf("response.Message = %q, want %q", response.Message, responseBindFailed)
+	}
+}
+
+func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registerer := internalconfig.NewRegisterer()
+	handler, err := NewHandler(registerer)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		DefaultRoute,
+		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseRegisterFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseRegisterFailed)
 	}
 }
 

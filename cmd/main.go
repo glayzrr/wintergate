@@ -7,6 +7,7 @@ import (
 	configapi "wintergate/api/config"
 	gatewayapi "wintergate/api/gateway"
 	internalauth "wintergate/internal/auth"
+	internalconfig "wintergate/internal/config"
 	internalgateway "wintergate/internal/gateway"
 	internalroute "wintergate/internal/route"
 
@@ -36,7 +37,7 @@ func run() error {
 }
 
 func newRouter() (*gin.Engine, error) {
-	registerer := configapi.NewRegisterer()
+	registerer := internalconfig.NewRegisterer()
 	configHandler, err := configapi.NewHandler(registerer)
 	if err != nil {
 		return nil, fmt.Errorf("create config handler: %w", err)

@@ -1,18 +1,16 @@
-package configapi
+package config
 
 import (
 	"bytes"
-	"encoding/json"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"errors"
+	"math/big"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
-	responseapi "wintergate/api/response"
 	authconfig "wintergate/internal/auth/config"
-
-	"github.com/gin-gonic/gin"
 )
 
 func TestNewRegistererInitializesRegistry(t *testing.T) {
@@ -27,17 +25,17 @@ func TestNewRegistererInitializesRegistry(t *testing.T) {
 	}
 }
 
-func TestRegisterStoresAuthConfigWhenSnapshotValid(t *testing.T) {
+func TestRegisterStoresAuthConfigWhenSettingsValid(t *testing.T) {
 	registerer := NewRegisterer()
-	authSection := validAuthSection(t)
-	originalJWKS := append([]byte(nil), authSection.JWKS...)
+	authSettings := validAuthSettings(t)
+	originalJWKS := append([]byte(nil), authSettings.JWKS...)
 
-	err := registerer.Register(Snapshot{
-		Auth:   authSection,
-		Routes: validRoutesSection(),
-		RateLimit: []RateLimitEndpoint{
+	err := registerer.Register(Settings{
+		Auth:   authSettings,
+		Routes: validRouteSettings(),
+		RateLimit: []RateLimitSettings{
 			{
-				Endpoint: Endpoint{
+				Route: Route{
 					Path:    "/api/order",
 					Method:  http.MethodPost,
 					Service: "order-service",
@@ -52,7 +50,7 @@ func TestRegisterStoresAuthConfigWhenSnapshotValid(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	authSection.JWKS[0] = 'x'
+	authSettings.JWKS[0] = 'x'
 
 	authRuntimeConfig, authConfigFound := registerer.authRegistry.Snapshot()
 	if !authConfigFound {
@@ -84,15 +82,15 @@ func TestRegisterStoresAuthConfigWhenSnapshotValid(t *testing.T) {
 func TestRegisterStoresHS256SecretWhenValid(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Auth: &AuthSection{
+	err := registerer.Register(Settings{
+		Auth: &AuthSettings{
 			JWTAlgorithm: "HS256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "1m",
 			JWTIssuer:    "auth-service",
 			JWTSecret:    " shared-secret ",
 		},
-		Routes: validRoutesSection(),
+		Routes: validRouteSettings(),
 	})
 	if err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -112,26 +110,26 @@ func TestRegisterStoresHS256SecretWhenValid(t *testing.T) {
 	}
 }
 
-func TestRegisterReturnsErrorWhenAuthSectionMissing(t *testing.T) {
+func TestRegisterReturnsErrorWhenAuthSettingsMissing(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Routes: validRoutesSection(),
+	err := registerer.Register(Settings{
+		Routes: validRouteSettings(),
 	})
 	if err == nil {
 		t.Fatal("Register returned nil error")
 	}
 
-	if !errors.Is(err, ErrInvalidSnapshot) {
-		t.Fatalf("error = %v, want ErrInvalidSnapshot", err)
+	if !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("error = %v, want ErrInvalidSettings", err)
 	}
 }
 
 func TestRegisterReturnsErrorWhenAuthClockSkewInvalid(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Auth: &AuthSection{
+	err := registerer.Register(Settings{
+		Auth: &AuthSettings{
 			JWTAlgorithm: "RS256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "bad",
@@ -143,16 +141,16 @@ func TestRegisterReturnsErrorWhenAuthClockSkewInvalid(t *testing.T) {
 		t.Fatal("Register returned nil error")
 	}
 
-	if !strings.Contains(err.Error(), "parse auth clock skew") {
-		t.Fatalf("error = %q, want auth clock skew context", err.Error())
+	if !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("error = %v, want ErrInvalidSettings", err)
 	}
 }
 
 func TestRegisterReturnsErrorWhenAuthJWKSMissing(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Auth: &AuthSection{
+	err := registerer.Register(Settings{
+		Auth: &AuthSettings{
 			JWTAlgorithm: "RS256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "1m",
@@ -163,16 +161,16 @@ func TestRegisterReturnsErrorWhenAuthJWKSMissing(t *testing.T) {
 		t.Fatal("Register returned nil error")
 	}
 
-	if !errors.Is(err, ErrInvalidSnapshot) {
-		t.Fatalf("error = %v, want ErrInvalidSnapshot", err)
+	if !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("error = %v, want ErrInvalidSettings", err)
 	}
 }
 
 func TestRegisterReturnsErrorWhenAuthSecretMissingForHS256(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Auth: &AuthSection{
+	err := registerer.Register(Settings{
+		Auth: &AuthSettings{
 			JWTAlgorithm: "HS256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "1m",
@@ -183,16 +181,16 @@ func TestRegisterReturnsErrorWhenAuthSecretMissingForHS256(t *testing.T) {
 		t.Fatal("Register returned nil error")
 	}
 
-	if !errors.Is(err, ErrInvalidSnapshot) {
-		t.Fatalf("error = %v, want ErrInvalidSnapshot", err)
+	if !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("error = %v, want ErrInvalidSettings", err)
 	}
 }
 
-func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
+func TestRegisterReturnsErrorWhenAuthRegistryRejectsSettings(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Auth: &AuthSection{
+	err := registerer.Register(Settings{
+		Auth: &AuthSettings{
 			JWTAlgorithm: "ES256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "1m",
@@ -209,21 +207,21 @@ func TestRegisterReturnsErrorWhenAuthRegistryRejectsSnapshot(t *testing.T) {
 	}
 }
 
-func TestRegisterReturnsErrorWhenRouteRegistryRejectsSnapshot(t *testing.T) {
+func TestRegisterReturnsErrorWhenRouteRegistryRejectsSettings(t *testing.T) {
 	registerer := NewRegisterer()
 
-	err := registerer.Register(Snapshot{
-		Auth: &AuthSection{
+	err := registerer.Register(Settings{
+		Auth: &AuthSettings{
 			JWTAlgorithm: "HS256",
 			JWTAudience:  "wintergate",
 			JWTClockSkew: "1m",
 			JWTIssuer:    "auth-service",
 			JWTSecret:    "shared-secret",
 		},
-		Routes: &RoutesSection{
-			Protected: []ProtectedEndpoint{
+		Routes: &RouteSettings{
+			Protected: []ProtectedRoute{
 				{
-					Endpoint: Endpoint{
+					Route: Route{
 						Method:  http.MethodPost,
 						Service: "order-service",
 					},
@@ -240,10 +238,10 @@ func TestRegisterReturnsErrorWhenRouteRegistryRejectsSnapshot(t *testing.T) {
 func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
 	registerer := NewRegisterer()
 
-	cfg := registerer.routeRuntimeConfig(&RoutesSection{
-		Protected: []ProtectedEndpoint{
+	cfg := registerer.routeRuntimeConfig(&RouteSettings{
+		Protected: []ProtectedRoute{
 			{
-				Endpoint: Endpoint{
+				Route: Route{
 					Path:    "/api/order",
 					Method:  http.MethodPost,
 					Service: "order-service",
@@ -263,10 +261,10 @@ func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
 
 	cfg.Entries[0].Roles[0] = "GUEST"
 
-	cfg = registerer.routeRuntimeConfig(&RoutesSection{
-		Protected: []ProtectedEndpoint{
+	cfg = registerer.routeRuntimeConfig(&RouteSettings{
+		Protected: []ProtectedRoute{
 			{
-				Endpoint: Endpoint{
+				Route: Route{
 					Path:    "/api/order",
 					Method:  http.MethodPost,
 					Service: "order-service",
@@ -281,52 +279,12 @@ func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
 	}
 }
 
-func TestHandlerPutSnapshotReturnsBadRequestWhenRegisterFails(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	registerer := NewRegisterer()
-	handler, err := NewHandler(registerer)
-	if err != nil {
-		t.Fatalf("NewHandler returned error: %v", err)
-	}
-
-	router := gin.New()
-	handler.RegisterRoutes(router)
-
-	request := httptest.NewRequest(
-		http.MethodPost,
-		DefaultRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
-	)
-	request.Header.Set("Content-Type", "application/json")
-
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
-	}
-
-	var response responseapi.APIResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("Unmarshal returned error: %v", err)
-	}
-
-	if response.Success {
-		t.Fatalf("response.Success = %v, want %v", response.Success, false)
-	}
-
-	if response.Message != responseRegisterFailed {
-		t.Fatalf("response.Message = %q, want %q", response.Message, responseRegisterFailed)
-	}
-}
-
-func validAuthSection(t *testing.T) *AuthSection {
+func validAuthSettings(t *testing.T) *AuthSettings {
 	t.Helper()
 
 	privateKey := generateRSAKey(t)
 
-	return &AuthSection{
+	return &AuthSettings{
 		JWTAlgorithm: "RS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: "1m",
@@ -335,17 +293,17 @@ func validAuthSection(t *testing.T) *AuthSection {
 	}
 }
 
-func validRoutesSection() *RoutesSection {
-	return &RoutesSection{
-		Protected: []ProtectedEndpoint{
+func validRouteSettings() *RouteSettings {
+	return &RouteSettings{
+		Protected: []ProtectedRoute{
 			{
-				Endpoint: Endpoint{
+				Route: Route{
 					Path:    "/api/order",
 					Method:  http.MethodPost,
 					Service: "order-service",
 				},
 				Roles: []string{"ADMIN", "OPS"},
-				TimeWindow: &TimeWindow{
+				AccessWindow: &AccessWindow{
 					Start:    "09:00",
 					End:      "18:00",
 					Timezone: "Asia/Seoul",
@@ -353,4 +311,21 @@ func validRoutesSection() *RoutesSection {
 			},
 		},
 	}
+}
+
+func generateRSAKey(t *testing.T) *rsa.PrivateKey {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("GenerateKey returned error: %v", err)
+	}
+
+	return privateKey
+}
+
+func mustJWKSJSON(keyID string, publicKey *rsa.PublicKey) string {
+	return `{"keys":[{"kid":"` + keyID + `","kty":"RSA","alg":"RS256","use":"sig","n":"` +
+		base64.RawURLEncoding.EncodeToString(publicKey.N.Bytes()) + `","e":"` +
+		base64.RawURLEncoding.EncodeToString(big.NewInt(int64(publicKey.E)).Bytes()) + `"}]}`
 }
