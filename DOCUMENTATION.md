@@ -10,22 +10,10 @@ import "wintergate/api/config"
 
 - [Constants](<#constants>)
 - [Variables](<#variables>)
-- [type AuthSection](<#AuthSection>)
-- [type Endpoint](<#Endpoint>)
 - [type Handler](<#Handler>)
-  - [func NewHandler\(registerer \*Registerer\) \(\*Handler, error\)](<#NewHandler>)
-  - [func \(h \*Handler\) PutSnapshot\(ctx \*gin.Context\)](<#Handler.PutSnapshot>)
+  - [func NewHandler\(registerer \*internalconfig.Registerer\) \(\*Handler, error\)](<#NewHandler>)
+  - [func \(h \*Handler\) EnrollConfig\(ctx \*gin.Context\)](<#Handler.EnrollConfig>)
   - [func \(h \*Handler\) RegisterRoutes\(router gin.IRouter\)](<#Handler.RegisterRoutes>)
-- [type ProtectedEndpoint](<#ProtectedEndpoint>)
-- [type RateLimitEndpoint](<#RateLimitEndpoint>)
-- [type Registerer](<#Registerer>)
-  - [func NewRegisterer\(\) \*Registerer](<#NewRegisterer>)
-  - [func \(r \*Registerer\) AuthRegistry\(\) \*authconfig.Registry](<#Registerer.AuthRegistry>)
-  - [func \(r \*Registerer\) Register\(snapshot Snapshot\) error](<#Registerer.Register>)
-  - [func \(r \*Registerer\) RouteRegistry\(\) \*routeconfig.Registry](<#Registerer.RouteRegistry>)
-- [type RoutesSection](<#RoutesSection>)
-- [type Snapshot](<#Snapshot>)
-- [type TimeWindow](<#TimeWindow>)
 
 
 ## Constants
@@ -41,48 +29,16 @@ const (
 
 ## Variables
 
-<a name="ErrInvalidSnapshot"></a>
+<a name="ErrNilRegisterer"></a>
 
 ```go
-var (
-    ErrInvalidSnapshot = errors.New("invalid snapshot")
-    ErrNilRegisterer   = errors.New("nil registerer")
-)
-```
-
-<a name="AuthSection"></a>
-## type AuthSection
-
-AuthSection 인증 관련 설정 섹션입니다.
-
-```go
-type AuthSection struct {
-    JWTAlgorithm string          `json:"jwt_algorithm"`
-    JWTAudience  string          `json:"jwt_audience"`
-    JWTClockSkew string          `json:"jwt_clock_skew"`
-    JWTIssuer    string          `json:"jwt_issuer"`
-    JWTSecret    string          `json:"jwt_secret,omitempty"`
-    JWKS         json.RawMessage `json:"jwks"`
-}
-```
-
-<a name="Endpoint"></a>
-## type Endpoint
-
-Endpoint 라우트 매칭에 필요한 기본 엔드포인트 정보를 표현합니다.
-
-```go
-type Endpoint struct {
-    Path    string `json:"path"`
-    Method  string `json:"method"`
-    Service string `json:"service"`
-}
+var ErrNilRegisterer = errors.New("nil registerer")
 ```
 
 <a name="Handler"></a>
 ## type Handler
 
-Handler 외부 설정 스냅샷을 수신해 내부 레지스트리에 반영합니다.
+Handler 외부 설정 정보를 수신해 내부 레지스트리에 반영합니다.
 
 ```go
 type Handler struct {
@@ -94,19 +50,19 @@ type Handler struct {
 ### func NewHandler
 
 ```go
-func NewHandler(registerer *Registerer) (*Handler, error)
+func NewHandler(registerer *internalconfig.Registerer) (*Handler, error)
 ```
 
 NewHandler 설정 수신 Handler를 생성합니다.
 
-<a name="Handler.PutSnapshot"></a>
-### func \(\*Handler\) PutSnapshot
+<a name="Handler.EnrollConfig"></a>
+### func \(\*Handler\) EnrollConfig
 
 ```go
-func (h *Handler) PutSnapshot(ctx *gin.Context)
+func (h *Handler) EnrollConfig(ctx *gin.Context)
 ```
 
-PutSnapshot 전달받은 설정 스냅샷을 내부 저장소에 반영합니다.
+EnrollConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
 
 <a name="Handler.RegisterRoutes"></a>
 ### func \(\*Handler\) RegisterRoutes
@@ -116,117 +72,6 @@ func (h *Handler) RegisterRoutes(router gin.IRouter)
 ```
 
 RegisterRoutes 설정 수신 엔드포인트를 Gin 라우터에 등록합니다.
-
-<a name="ProtectedEndpoint"></a>
-## type ProtectedEndpoint
-
-ProtectedEndpoint 추가 인가 조건이 필요한 엔드포인트를 표현합니다.
-
-```go
-type ProtectedEndpoint struct {
-    Endpoint
-    Roles      []string    `json:"roles"`
-    TimeWindow *TimeWindow `json:"time_window,omitempty"`
-}
-```
-
-<a name="RateLimitEndpoint"></a>
-## type RateLimitEndpoint
-
-RateLimitEndpoint 요청 제한 규칙이 적용되는 엔드포인트를 표현합니다.
-
-```go
-type RateLimitEndpoint struct {
-    Endpoint
-    Roles    []string `json:"roles"`
-    Duration string   `json:"duration"`
-    Limit    int      `json:"limit"`
-}
-```
-
-<a name="Registerer"></a>
-## type Registerer
-
-Registerer 설정 스냅샷을 받아 필요한 내부 저장소에 일괄 등록합니다.
-
-```go
-type Registerer struct {
-    // contains filtered or unexported fields
-}
-```
-
-<a name="NewRegisterer"></a>
-### func NewRegisterer
-
-```go
-func NewRegisterer() *Registerer
-```
-
-NewRegisterer 설정 스냅샷 등록용 Registerer를 생성합니다.
-
-<a name="Registerer.AuthRegistry"></a>
-### func \(\*Registerer\) AuthRegistry
-
-```go
-func (r *Registerer) AuthRegistry() *authconfig.Registry
-```
-
-AuthRegistry 인증 런타임 설정 저장소를 반환합니다.
-
-<a name="Registerer.Register"></a>
-### func \(\*Registerer\) Register
-
-```go
-func (r *Registerer) Register(snapshot Snapshot) error
-```
-
-Register 설정 스냅샷 전체를 내부 저장소에 반영합니다.
-
-<a name="Registerer.RouteRegistry"></a>
-### func \(\*Registerer\) RouteRegistry
-
-```go
-func (r *Registerer) RouteRegistry() *routeconfig.Registry
-```
-
-RouteRegistry 보호 라우트 런타임 설정 저장소를 반환합니다.
-
-<a name="RoutesSection"></a>
-## type RoutesSection
-
-RoutesSection 보호 엔드포인트 설정을 보관합니다.
-
-```go
-type RoutesSection struct {
-    Protected []ProtectedEndpoint
-}
-```
-
-<a name="Snapshot"></a>
-## type Snapshot
-
-Snapshot 외부에서 전달하는 Wintergate 설정 스냅샷입니다.
-
-```go
-type Snapshot struct {
-    Auth      *AuthSection        `json:"auth,omitempty"`
-    Routes    *RoutesSection      `json:"routes,omitempty"`
-    RateLimit []RateLimitEndpoint `json:"rate_limit,omitempty"`
-}
-```
-
-<a name="TimeWindow"></a>
-## type TimeWindow
-
-TimeWindow 엔드포인트 접근 가능 시간을 표현합니다.
-
-```go
-type TimeWindow struct {
-    Start    string `json:"start"`
-    End      string `json:"end"`
-    Timezone string `json:"timezone"`
-}
-```
 
 # gatewayapi
 
@@ -428,6 +273,177 @@ func (d *Decoder) ReplaceRegistry(registry *authconfig.Registry) error
 ```
 
 ReplaceRegistry Decoder가 사용할 인증 설정 저장소를 교체합니다.
+
+# config
+
+```go
+import "wintergate/internal/config"
+```
+
+## Index
+
+- [Variables](<#variables>)
+- [type AccessWindow](<#AccessWindow>)
+- [type AuthSettings](<#AuthSettings>)
+- [type ProtectedRoute](<#ProtectedRoute>)
+- [type RateLimitSettings](<#RateLimitSettings>)
+- [type Registerer](<#Registerer>)
+  - [func NewRegisterer\(\) \*Registerer](<#NewRegisterer>)
+  - [func \(r \*Registerer\) AuthRegistry\(\) \*authconfig.Registry](<#Registerer.AuthRegistry>)
+  - [func \(r \*Registerer\) Register\(settings Settings\) error](<#Registerer.Register>)
+  - [func \(r \*Registerer\) RouteRegistry\(\) \*routeconfig.Registry](<#Registerer.RouteRegistry>)
+- [type Route](<#Route>)
+- [type RouteSettings](<#RouteSettings>)
+- [type Settings](<#Settings>)
+
+
+## Variables
+
+<a name="ErrInvalidSettings"></a>
+
+```go
+var ErrInvalidSettings = errors.New("invalid settings")
+```
+
+<a name="AccessWindow"></a>
+## type AccessWindow
+
+AccessWindow 엔드포인트 접근 가능 시간 설정 정보입니다.
+
+```go
+type AccessWindow struct {
+    Start    string `json:"start"`
+    End      string `json:"end"`
+    Timezone string `json:"timezone"`
+}
+```
+
+<a name="AuthSettings"></a>
+## type AuthSettings
+
+AuthSettings 인증 관련 설정 정보입니다.
+
+```go
+type AuthSettings struct {
+    JWTAlgorithm string          `json:"jwt_algorithm"`
+    JWTAudience  string          `json:"jwt_audience"`
+    JWTClockSkew string          `json:"jwt_clock_skew"`
+    JWTIssuer    string          `json:"jwt_issuer"`
+    JWTSecret    string          `json:"jwt_secret,omitempty"`
+    JWKS         json.RawMessage `json:"jwks"`
+}
+```
+
+<a name="ProtectedRoute"></a>
+## type ProtectedRoute
+
+ProtectedRoute 추가 인가 조건이 필요한 라우트 설정 정보입니다.
+
+```go
+type ProtectedRoute struct {
+    Route
+    Roles        []string      `json:"roles"`
+    AccessWindow *AccessWindow `json:"time_window,omitempty"`
+}
+```
+
+<a name="RateLimitSettings"></a>
+## type RateLimitSettings
+
+RateLimitSettings 요청 제한 규칙 설정 정보입니다.
+
+```go
+type RateLimitSettings struct {
+    Route
+    Roles    []string `json:"roles"`
+    Duration string   `json:"duration"`
+    Limit    int      `json:"limit"`
+}
+```
+
+<a name="Registerer"></a>
+## type Registerer
+
+Registerer 설정 정보를 받아 필요한 내부 저장소에 일괄 등록합니다.
+
+```go
+type Registerer struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewRegisterer"></a>
+### func NewRegisterer
+
+```go
+func NewRegisterer() *Registerer
+```
+
+NewRegisterer 설정 정보 등록용 Registerer를 생성합니다.
+
+<a name="Registerer.AuthRegistry"></a>
+### func \(\*Registerer\) AuthRegistry
+
+```go
+func (r *Registerer) AuthRegistry() *authconfig.Registry
+```
+
+AuthRegistry 인증 런타임 설정 저장소를 반환합니다.
+
+<a name="Registerer.Register"></a>
+### func \(\*Registerer\) Register
+
+```go
+func (r *Registerer) Register(settings Settings) error
+```
+
+Register 설정 정보 전체를 내부 저장소에 반영합니다.
+
+<a name="Registerer.RouteRegistry"></a>
+### func \(\*Registerer\) RouteRegistry
+
+```go
+func (r *Registerer) RouteRegistry() *routeconfig.Registry
+```
+
+RouteRegistry 보호 라우트 런타임 설정 저장소를 반환합니다.
+
+<a name="Route"></a>
+## type Route
+
+Route 라우트 매칭에 필요한 기본 설정 정보입니다.
+
+```go
+type Route struct {
+    Path    string `json:"path"`
+    Method  string `json:"method"`
+    Service string `json:"service"`
+}
+```
+
+<a name="RouteSettings"></a>
+## type RouteSettings
+
+RouteSettings 라우팅 관련 설정 정보입니다.
+
+```go
+type RouteSettings struct {
+    Protected []ProtectedRoute `json:"protected"`
+}
+```
+
+<a name="Settings"></a>
+## type Settings
+
+Settings 외부에서 전달하는 Wintergate 설정 정보입니다.
+
+```go
+type Settings struct {
+    Auth      *AuthSettings       `json:"auth,omitempty"`
+    Routes    *RouteSettings      `json:"routes,omitempty"`
+    RateLimit []RateLimitSettings `json:"rate_limit,omitempty"`
+}
+```
 
 # gateway
 
