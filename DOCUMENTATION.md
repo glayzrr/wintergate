@@ -616,6 +616,329 @@ type TokenDecoder interface {
 }
 ```
 
+# pool
+
+```go
+import "wintergate/internal/pool"
+```
+
+## Index
+
+- [Variables](<#variables>)
+- [func HandleRequest\(serviceName, host string, w http.ResponseWriter, r \*http.Request\) error](<#HandleRequest>)
+- [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
+- [func RegisterPolicies\(policies \[\]Policy\) error](<#RegisterPolicies>)
+- [type Config](<#Config>)
+  - [func GetConfig\(tier Tier\) \(Config, error\)](<#GetConfig>)
+- [type Decision](<#Decision>)
+  - [func DecidePolicy\(status Status\) Decision](<#DecidePolicy>)
+- [type DoneFunc](<#DoneFunc>)
+  - [func StartRecord\(service string\) DoneFunc](<#StartRecord>)
+- [type Policy](<#Policy>)
+- [type PolicyRegistry](<#PolicyRegistry>)
+  - [func DefaultPolicyRegistry\(\) \*PolicyRegistry](<#DefaultPolicyRegistry>)
+  - [func NewPolicyRegistry\(\) \*PolicyRegistry](<#NewPolicyRegistry>)
+  - [func \(r \*PolicyRegistry\) Decide\(status Status\) Decision](<#PolicyRegistry.Decide>)
+  - [func \(r \*PolicyRegistry\) Policy\(service string\) \(Policy, bool\)](<#PolicyRegistry.Policy>)
+  - [func \(r \*PolicyRegistry\) Register\(policies \[\]Policy\) error](<#PolicyRegistry.Register>)
+- [type Recorder](<#Recorder>)
+  - [func DefaultRecorder\(\) \*Recorder](<#DefaultRecorder>)
+  - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
+  - [func \(r \*Recorder\) Start\(service string\) DoneFunc](<#Recorder.Start>)
+  - [func \(r \*Recorder\) Status\(service string\) \(Status, error\)](<#Recorder.Status>)
+- [type Status](<#Status>)
+  - [func StatusFor\(service string\) \(Status, error\)](<#StatusFor>)
+- [type Threshold](<#Threshold>)
+- [type Tier](<#Tier>)
+
+
+## Variables
+
+<a name="ErrInvalidConfig"></a>
+
+```go
+var (
+    ErrInvalidConfig  = errors.New("invalid pool config")
+    ErrInvalidPolicy  = errors.New("invalid traffic policy")
+    ErrInvalidService = errors.New("invalid service")
+    ErrStatusNotFound = errors.New("traffic status not found")
+)
+```
+
+<a name="HandleRequest"></a>
+## func HandleRequest
+
+```go
+func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Request) error
+```
+
+
+
+<a name="NewTransport"></a>
+## func NewTransport
+
+```go
+func NewTransport(tier Tier) (*http.Transport, error)
+```
+
+NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
+
+<a name="RegisterPolicies"></a>
+## func RegisterPolicies
+
+```go
+func RegisterPolicies(policies []Policy) error
+```
+
+RegisterPolicies 기본 정책 저장소에 서비스별 정책을 등록합니다.
+
+<a name="Config"></a>
+## type Config
+
+Config http.Transport 커넥션 풀 관련 설정입니다.
+
+```go
+type Config struct {
+    Tier                  Tier
+    MaxIdleConns          int
+    MaxIdleConnsPerHost   int
+    MaxConnsPerHost       int
+    IdleConnTimeout       time.Duration
+    ResponseHeaderTimeout time.Duration
+    TLSHandshakeTimeout   time.Duration
+    ExpectContinueTimeout time.Duration
+}
+```
+
+<a name="GetConfig"></a>
+### func GetConfig
+
+```go
+func GetConfig(tier Tier) (Config, error)
+```
+
+GetConfig 지정한 티어의 풀 설정을 반환합니다.
+
+<a name="Decision"></a>
+## type Decision
+
+Decision 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
+
+```go
+type Decision struct {
+    Service    string
+    Registered bool
+    Tier       Tier
+    Dedicated  bool
+}
+```
+
+<a name="DecidePolicy"></a>
+### func DecidePolicy
+
+```go
+func DecidePolicy(status Status) Decision
+```
+
+DecidePolicy 기본 정책 저장소에서 현재 상태에 대한 풀 사용 방식을 결정합니다.
+
+<a name="DoneFunc"></a>
+## type DoneFunc
+
+DoneFunc 요청 처리가 끝났을 때 호출해 트래픽 기록을 마무리합니다.
+
+```go
+type DoneFunc func()
+```
+
+<a name="StartRecord"></a>
+### func StartRecord
+
+```go
+func StartRecord(service string) DoneFunc
+```
+
+StartRecord 기본 Recorder에 서비스 요청 시작을 기록하고 완료 함수를 반환합니다.
+
+<a name="Policy"></a>
+## type Policy
+
+Policy 서비스별 트래픽 분류 정책입니다.
+
+```go
+type Policy struct {
+    Service       string
+    Hot           Threshold
+    Super         Threshold
+    DedicatedFrom Tier
+}
+```
+
+<a name="PolicyRegistry"></a>
+## type PolicyRegistry
+
+PolicyRegistry 서비스별 트래픽 분류 정책을 저장합니다.
+
+```go
+type PolicyRegistry struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="DefaultPolicyRegistry"></a>
+### func DefaultPolicyRegistry
+
+```go
+func DefaultPolicyRegistry() *PolicyRegistry
+```
+
+DefaultPolicyRegistry 패키지 기본 트래픽 정책 저장소를 반환합니다.
+
+<a name="NewPolicyRegistry"></a>
+### func NewPolicyRegistry
+
+```go
+func NewPolicyRegistry() *PolicyRegistry
+```
+
+NewPolicyRegistry 빈 트래픽 정책 저장소를 생성합니다.
+
+<a name="PolicyRegistry.Decide"></a>
+### func \(\*PolicyRegistry\) Decide
+
+```go
+func (r *PolicyRegistry) Decide(status Status) Decision
+```
+
+Decide 등록 정책이 있으면 RPS/in\-flight 기준으로 tier와 전용 풀 여부를 결정합니다.
+
+<a name="PolicyRegistry.Policy"></a>
+### func \(\*PolicyRegistry\) Policy
+
+```go
+func (r *PolicyRegistry) Policy(service string) (Policy, bool)
+```
+
+Policy 서비스별 등록 정책의 사본을 반환합니다.
+
+<a name="PolicyRegistry.Register"></a>
+### func \(\*PolicyRegistry\) Register
+
+```go
+func (r *PolicyRegistry) Register(policies []Policy) error
+```
+
+Register 전달받은 정책 목록으로 현재 정책을 교체합니다.
+
+<a name="Recorder"></a>
+## type Recorder
+
+Recorder 서비스별 트래픽 상태를 기록합니다.
+
+```go
+type Recorder struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="DefaultRecorder"></a>
+### func DefaultRecorder
+
+```go
+func DefaultRecorder() *Recorder
+```
+
+DefaultRecorder 패키지 기본 트래픽 Recorder를 반환합니다.
+
+<a name="NewRecorder"></a>
+### func NewRecorder
+
+```go
+func NewRecorder() *Recorder
+```
+
+NewRecorder 기본 window를 사용하는 트래픽 Recorder를 생성합니다.
+
+<a name="Recorder.Start"></a>
+### func \(\*Recorder\) Start
+
+```go
+func (r *Recorder) Start(service string) DoneFunc
+```
+
+Start 서비스 요청 시작을 기록하고 완료 함수를 반환합니다.
+
+<a name="Recorder.Status"></a>
+### func \(\*Recorder\) Status
+
+```go
+func (r *Recorder) Status(service string) (Status, error)
+```
+
+Status 서비스 트래픽 상태의 현재 값을 반환합니다.
+
+<a name="Status"></a>
+## type Status
+
+Status 특정 서비스의 현재 트래픽 상태입니다.
+
+```go
+type Status struct {
+    Service          string
+    InFlight         int64
+    StartedRequests  uint64
+    FinishedRequests uint64
+    RequestsInWindow uint64
+    RPS              float64
+    AverageLatency   time.Duration
+    Window           time.Duration
+    LastSeenAt       time.Time
+}
+```
+
+<a name="StatusFor"></a>
+### func StatusFor
+
+```go
+func StatusFor(service string) (Status, error)
+```
+
+StatusFor 기본 Recorder에서 서비스 트래픽 상태를 반환합니다.
+
+<a name="Threshold"></a>
+## type Threshold
+
+Threshold 특정 풀 티어로 승격하기 위한 RPS/in\-flight 기준입니다.
+
+```go
+type Threshold struct {
+    RPS      float64
+    InFlight int64
+}
+```
+
+<a name="Tier"></a>
+## type Tier
+
+Tier 트래픽 규모별 커넥션 풀 설정 단계를 표현합니다.
+
+```go
+type Tier string
+```
+
+<a name="TierNormal"></a>
+
+```go
+const (
+    // TierNormal 일반 트래픽용 기본 풀 설정입니다.
+    TierNormal Tier = "normal"
+    // TierHot 트래픽이 몰리는 서비스용 풀 설정입니다.
+    TierHot Tier = "hot"
+    // TierSuper 매우 높은 트래픽을 받는 서비스용 풀 설정입니다.
+    TierSuper Tier = "super"
+)
+```
+
 # route
 
 ```go
