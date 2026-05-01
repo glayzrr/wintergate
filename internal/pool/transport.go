@@ -9,19 +9,19 @@ import (
 	"sync"
 )
 
-var defaultClients = newClientStore()
+var defaultClients = mustNewClientStore()
 
 type clientStore struct {
-	clients map[clientKey]*http.Client
+	shared    map[Tier]*cachedClient
+	dedicated map[string]*cachedClient
 
-	// mu는 tier/service별 http.Client 캐시의 동시 조회와 생성을 보호합니다.
+	// mu는 shared/dedicated http.Client 캐시의 동시 조회와 교체를 보호합니다.
 	mu sync.RWMutex
 }
 
-type clientKey struct {
-	service   string
-	tier      Tier
-	dedicated bool
+type cachedClient struct {
+	tier   Tier
+	client *http.Client
 }
 
 // NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
@@ -91,9 +91,42 @@ func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Requ
 }
 
 func newClientStore() *clientStore {
-	return &clientStore{
-		clients: make(map[clientKey]*http.Client),
+	store, err := newClientStoreWithSharedClients()
+	if err != nil {
+		return &clientStore{
+			shared:    make(map[Tier]*cachedClient),
+			dedicated: make(map[string]*cachedClient),
+		}
 	}
+
+	return store
+}
+
+func mustNewClientStore() *clientStore {
+	store, err := newClientStoreWithSharedClients()
+	if err != nil {
+		panic(err)
+	}
+
+	return store
+}
+
+func newClientStoreWithSharedClients() (*clientStore, error) {
+	store := &clientStore{
+		shared:    make(map[Tier]*cachedClient, 3),
+		dedicated: make(map[string]*cachedClient),
+	}
+
+	for _, tier := range []Tier{TierNormal, TierHot, TierSuper} {
+		client, err := newCachedClient(tier)
+		if err != nil {
+			return nil, err
+		}
+
+		store.shared[tier] = client
+	}
+
+	return store, nil
 }
 
 func (s *clientStore) client(decision Decision) (*http.Client, error) {
@@ -101,62 +134,181 @@ func (s *clientStore) client(decision Decision) (*http.Client, error) {
 		return nil, fmt.Errorf("%w: client store is nil", ErrInvalidConfig)
 	}
 
-	key, err := clientStoreKey(decision)
+	tier, err := normalizeDecisionTier(decision.Tier)
 	if err != nil {
 		return nil, err
 	}
+	decision.Tier = tier
 
-	if client, found := s.find(key); found {
-		return client, nil
+	if !decision.Dedicated {
+		return s.sharedClient(decision)
 	}
 
+	return s.dedicatedClient(decision)
+}
+
+func (s *clientStore) sharedClient(decision Decision) (*http.Client, error) {
+	service := normalizeService(decision.Service)
+
+	// 전용 client가 없는 서비스는 read lock만으로 shared client를 바로 반환합니다.
+	s.mu.RLock()
+	cached := s.shared[decision.Tier]
+	_, hasDedicated := s.dedicated[service]
+	if cached != nil && (!hasDedicated || service == "") {
+		client := cached.client
+		s.mu.RUnlock()
+		return client, nil
+	}
+	s.mu.RUnlock()
+
+	// 전용 client에서 shared client로 복귀해야 할 때만 write lock을 잡습니다.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if client, found := s.clients[key]; found {
-		return client, nil
+	// Dedicated=false 판단이 내려진 서비스는 전용 풀을 해제하고 shared 풀로 합류합니다.
+	if service != "" {
+		if oldClient, found := s.dedicated[service]; found {
+			oldClient.closeIdleConnections()
+			delete(s.dedicated, service)
+		}
 	}
 
-	transport, err := NewTransport(key.tier)
+	// shared client는 normal/hot/super tier별로 하나씩 유지합니다.
+	cached = s.shared[decision.Tier]
+	if cached == nil {
+		var err error
+		cached, err = newCachedClient(decision.Tier)
+		if err != nil {
+			return nil, err
+		}
+		s.shared[decision.Tier] = cached
+	}
+
+	return cached.client, nil
+}
+
+func (s *clientStore) dedicatedClient(decision Decision) (*http.Client, error) {
+	service := normalizeService(decision.Service)
+	if service == "" {
+		return nil, fmt.Errorf("%w: service is required for dedicated pool", ErrInvalidService)
+	}
+
+	// 이미 같은 tier의 전용 client가 있으면 read lock만으로 재사용합니다.
+	s.mu.RLock()
+	cached := s.dedicated[service]
+	if cached != nil && cached.tier == decision.Tier {
+		client := cached.client
+		s.mu.RUnlock()
+		return client, nil
+	}
+	s.mu.RUnlock()
+
+	// 전용 client가 없거나 tier가 바뀐 경우에만 write lock으로 생성/교체합니다.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// lock 대기 중 다른 고루틴이 같은 tier client를 만들었을 수 있어 다시 확인합니다.
+	cached = s.dedicated[service]
+	if cached != nil && cached.tier == decision.Tier {
+		return cached.client, nil
+	}
+
+	// Transport 설정은 생성 후 변경하지 않으므로 tier 변경 시 새 client로 교체합니다.
+	nextClient, err := newCachedClient(decision.Tier)
 	if err != nil {
 		return nil, err
 	}
 
-	client := &http.Client{
-		Transport: transport,
+	// 기존 전용 client가 있으면 idle connection만 닫고 진행 중 요청은 건드리지 않습니다.
+	if cached != nil {
+		cached.closeIdleConnections()
 	}
-	s.clients[key] = client
+	s.dedicated[service] = nextClient
 
-	return client, nil
+	return nextClient.client, nil
 }
 
-func (s *clientStore) find(key clientKey) (*http.Client, bool) {
+func newCachedClient(tier Tier) (*cachedClient, error) {
+	transport, err := NewTransport(tier)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cachedClient{
+		tier: tier,
+		client: &http.Client{
+			Transport: transport,
+		},
+	}, nil
+}
+
+func (c *cachedClient) closeIdleConnections() {
+	if c == nil || c.client == nil {
+		return
+	}
+
+	transport, ok := c.client.Transport.(*http.Transport)
+	if !ok {
+		return
+	}
+
+	transport.CloseIdleConnections()
+}
+
+func normalizeDecisionTier(tier Tier) (Tier, error) {
+	if strings.TrimSpace(string(tier)) == "" {
+		return TierNormal, nil
+	}
+
+	normalizedTier, err := normalizeTier(tier)
+	if err != nil {
+		return "", err
+	}
+
+	return normalizedTier, nil
+}
+
+func (s *clientStore) count() (int, int) {
+	if s == nil {
+		return 0, 0
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	client, found := s.clients[key]
-
-	return client, found
+	return len(s.shared), len(s.dedicated)
 }
 
-func clientStoreKey(decision Decision) (clientKey, error) {
-	tier := decision.Tier
-	if strings.TrimSpace(string(tier)) == "" {
-		tier = TierNormal
+func (s *clientStore) dedicatedTier(service string) (Tier, bool) {
+	if s == nil {
+		return "", false
 	}
 
-	key := clientKey{
-		tier:      tier,
-		dedicated: decision.Dedicated,
-	}
-	if decision.Dedicated {
-		key.service = normalizeService(decision.Service)
-		if key.service == "" {
-			return clientKey{}, fmt.Errorf("%w: service is required for dedicated pool", ErrInvalidService)
-		}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cached := s.dedicated[normalizeService(service)]
+	if cached == nil {
+		return "", false
 	}
 
-	return key, nil
+	return cached.tier, true
+}
+
+func (s *clientStore) sharedClientForTier(tier Tier) (*http.Client, bool) {
+	if s == nil {
+		return nil, false
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cached := s.shared[tier]
+	if cached == nil {
+		return nil, false
+	}
+
+	return cached.client, true
 }
 
 func upstreamRequest(host string, r *http.Request) (*http.Request, error) {

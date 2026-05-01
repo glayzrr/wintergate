@@ -116,6 +116,14 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 
 func TestClientStoreReusesSharedClient(t *testing.T) {
 	store := newClientStore()
+	sharedCount, dedicatedCount := store.count()
+	if sharedCount != 3 {
+		t.Fatalf("sharedCount = %d, want %d", sharedCount, 3)
+	}
+	if dedicatedCount != 0 {
+		t.Fatalf("dedicatedCount = %d, want %d", dedicatedCount, 0)
+	}
+
 	decision := Decision{
 		Service: "order-service",
 		Tier:    TierNormal,
@@ -132,6 +140,32 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 
 	if firstClient != secondClient {
 		t.Fatal("client store did not reuse shared client")
+	}
+}
+
+func TestClientStoreUsesSharedTierClients(t *testing.T) {
+	store := newClientStore()
+
+	normalClient, err := store.client(Decision{
+		Service: "order-service",
+		Tier:    TierNormal,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+	hotClient, err := store.client(Decision{
+		Service: "payment-service",
+		Tier:    TierHot,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+
+	if normalClient == hotClient {
+		t.Fatal("client store reused shared client across tiers")
+	}
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 0 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 0)
 	}
 }
 
@@ -157,5 +191,78 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 
 	if orderClient == paymentClient {
 		t.Fatal("client store reused dedicated client across services")
+	}
+
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 2 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 2)
+	}
+}
+
+func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
+	store := newClientStore()
+
+	hotClient, err := store.client(Decision{
+		Service:   "order-service",
+		Tier:      TierHot,
+		Dedicated: true,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+	superClient, err := store.client(Decision{
+		Service:   "order-service",
+		Tier:      TierSuper,
+		Dedicated: true,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+
+	if hotClient == superClient {
+		t.Fatal("client store reused dedicated client after tier changed")
+	}
+	if tier, found := store.dedicatedTier("order-service"); !found || tier != TierSuper {
+		t.Fatalf("dedicated tier = (%q, %t), want (%q, %t)", tier, found, TierSuper, true)
+	}
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 1 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 1)
+	}
+}
+
+func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
+	store := newClientStore()
+
+	dedicatedClient, err := store.client(Decision{
+		Service:   "order-service",
+		Tier:      TierHot,
+		Dedicated: true,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+	sharedHotClient, found := store.sharedClientForTier(TierHot)
+	if !found {
+		t.Fatal("shared hot client not found")
+	}
+
+	client, err := store.client(Decision{
+		Service: "order-service",
+		Tier:    TierHot,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+
+	if client != sharedHotClient {
+		t.Fatal("client store did not return shared client after dedicated release")
+	}
+	if client == dedicatedClient {
+		t.Fatal("client store kept using dedicated client after release")
+	}
+	if _, found := store.dedicatedTier("order-service"); found {
+		t.Fatal("dedicated client still exists after shared decision")
+	}
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 0 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 0)
 	}
 }
