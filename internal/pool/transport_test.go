@@ -1,6 +1,8 @@
 package pool
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +113,70 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	}
 	if string(body) != "created" {
 		t.Fatalf("body = %q, want %q", string(body), "created")
+	}
+}
+
+func TestHandleRequestReleasesRetiredDedicatedClientAfterContextTimeout(t *testing.T) {
+	resetDefaultState(t)
+
+	if err := RegisterPolicies([]Policy{
+		{
+			Service:       "order-service",
+			Hot:           Threshold{InFlight: 1},
+			DedicatedFrom: TierHot,
+		},
+	}); err != nil {
+		t.Fatalf("RegisterPolicies returned error: %v", err)
+	}
+
+	upstreamStarted := make(chan struct{}, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamStarted <- struct{}{}
+		<-r.Context().Done()
+	}))
+	defer upstream.Close()
+
+	errCh := handleRequestAsync(t, "order-service", upstream.URL, 200*time.Millisecond)
+	waitForSignal(t, upstreamStarted, "first upstream request")
+
+	oldClient := dedicatedCachedClient(t, defaultClients, "order-service")
+	if oldClient.tier != TierHot {
+		t.Fatalf("dedicated tier = %q, want %q", oldClient.tier, TierHot)
+	}
+	oldClientDone := waitCachedClient(oldClient)
+
+	replacement, err := defaultClients.client(Decision{
+		Service:   "order-service",
+		Tier:      TierSuper,
+		Dedicated: true,
+	})
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+	replacement.release()
+
+	if replacement == oldClient {
+		t.Fatal("client store reused old dedicated client after tier changed")
+	}
+	if tier, found := defaultClients.dedicatedTier("order-service"); !found || tier != TierSuper {
+		t.Fatalf("dedicated tier = (%q, %t), want (%q, %t)", tier, found, TierSuper, true)
+	}
+
+	assertStillWaiting(t, oldClientDone, 20*time.Millisecond, "retired client drained before the in-flight request timed out")
+
+	err = waitForRequestError(t, errCh)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("HandleRequest error = %v, want context deadline exceeded", err)
+	}
+
+	waitForDone(t, oldClientDone, time.Second, "retired client wait group")
+
+	status, err := StatusFor("order-service")
+	if err != nil {
+		t.Fatalf("StatusFor returned error: %v", err)
+	}
+	if status.InFlight != 0 {
+		t.Fatalf("status.InFlight = %d, want 0", status.InFlight)
 	}
 }
 
@@ -235,6 +301,115 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 0 {
 		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 0)
 	}
+}
+
+func resetDefaultState(t *testing.T) {
+	t.Helper()
+
+	previousClients := defaultClients
+	previousRecorder := defaultRecorder
+	previousPolicyRegistry := defaultPolicyRegistry
+
+	defaultClients = newClientStore()
+	defaultRecorder = NewRecorder()
+	defaultPolicyRegistry = NewPolicyRegistry()
+
+	t.Cleanup(func() {
+		defaultClients = previousClients
+		defaultRecorder = previousRecorder
+		defaultPolicyRegistry = previousPolicyRegistry
+	})
+}
+
+func handleRequestAsync(t *testing.T, service, host string, timeout time.Duration) <-chan error {
+	t.Helper()
+
+	errCh := make(chan error, 1)
+	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
+	ctx, cancel := context.WithTimeout(request.Context(), timeout)
+	request = request.WithContext(ctx)
+	recorder := httptest.NewRecorder()
+
+	go func() {
+		defer cancel()
+		errCh <- HandleRequest(service, host, recorder, request)
+	}()
+
+	return errCh
+}
+
+func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *cachedClient {
+	t.Helper()
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	client := store.dedicated[normalizeService(service)]
+	if client == nil {
+		t.Fatalf("dedicated client for %q not found", service)
+	}
+
+	return client
+}
+
+func waitCachedClient(client *cachedClient) <-chan struct{} {
+	done := make(chan struct{})
+
+	go func() {
+		client.wg.Wait()
+		close(done)
+	}()
+
+	return done
+}
+
+func waitForSignal(t *testing.T, ch <-chan struct{}, name string) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for %s", name)
+	}
+}
+
+func assertStillWaiting(t *testing.T, ch <-chan struct{}, duration time.Duration, message string) {
+	t.Helper()
+
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+
+	select {
+	case <-ch:
+		t.Fatal(message)
+	case <-timer.C:
+	}
+}
+
+func waitForDone(t *testing.T, ch <-chan struct{}, timeout time.Duration, name string) {
+	t.Helper()
+
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+		t.Fatalf("timed out waiting for %s", name)
+	}
+}
+
+func waitForRequestError(t *testing.T, errCh <-chan error) error {
+	t.Helper()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("HandleRequest returned nil error, want timeout error")
+		}
+		return err
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for HandleRequest error")
+	}
+
+	return nil
 }
 
 func mustClient(t *testing.T, store *clientStore, decision Decision) *cachedClient {
