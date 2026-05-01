@@ -129,14 +129,8 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 		Tier:    TierNormal,
 	}
 
-	firstClient, err := store.client(decision)
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
-	secondClient, err := store.client(decision)
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
+	firstClient := mustClient(t, store, decision)
+	secondClient := mustClient(t, store, decision)
 
 	if firstClient != secondClient {
 		t.Fatal("client store did not reuse shared client")
@@ -146,20 +140,14 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 func TestClientStoreUsesSharedTierClients(t *testing.T) {
 	store := newClientStore()
 
-	normalClient, err := store.client(Decision{
+	normalClient := mustClient(t, store, Decision{
 		Service: "order-service",
 		Tier:    TierNormal,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
-	hotClient, err := store.client(Decision{
+	hotClient := mustClient(t, store, Decision{
 		Service: "payment-service",
 		Tier:    TierHot,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
 
 	if normalClient == hotClient {
 		t.Fatal("client store reused shared client across tiers")
@@ -172,22 +160,16 @@ func TestClientStoreUsesSharedTierClients(t *testing.T) {
 func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 	store := newClientStore()
 
-	orderClient, err := store.client(Decision{
+	orderClient := mustClient(t, store, Decision{
 		Service:   "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
-	paymentClient, err := store.client(Decision{
+	paymentClient := mustClient(t, store, Decision{
 		Service:   "payment-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
 
 	if orderClient == paymentClient {
 		t.Fatal("client store reused dedicated client across services")
@@ -201,22 +183,16 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 	store := newClientStore()
 
-	hotClient, err := store.client(Decision{
+	hotClient := mustClient(t, store, Decision{
 		Service:   "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
-	superClient, err := store.client(Decision{
+	superClient := mustClient(t, store, Decision{
 		Service:   "order-service",
 		Tier:      TierSuper,
 		Dedicated: true,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
 
 	if hotClient == superClient {
 		t.Fatal("client store reused dedicated client after tier changed")
@@ -232,28 +208,22 @@ func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	store := newClientStore()
 
-	dedicatedClient, err := store.client(Decision{
+	dedicatedClient := mustClient(t, store, Decision{
 		Service:   "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
 	sharedHotClient, found := store.sharedClientForTier(TierHot)
 	if !found {
 		t.Fatal("shared hot client not found")
 	}
 
-	client, err := store.client(Decision{
+	client := mustClient(t, store, Decision{
 		Service: "order-service",
 		Tier:    TierHot,
 	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
-	}
 
-	if client != sharedHotClient {
+	if client.client != sharedHotClient {
 		t.Fatal("client store did not return shared client after dedicated release")
 	}
 	if client == dedicatedClient {
@@ -265,4 +235,19 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 0 {
 		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 0)
 	}
+}
+
+func mustClient(t *testing.T, store *clientStore, decision Decision) *cachedClient {
+	t.Helper()
+
+	client, err := store.client(decision)
+	if err != nil {
+		t.Fatalf("client returned error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("client is nil")
+	}
+
+	t.Cleanup(client.release)
+	return client
 }

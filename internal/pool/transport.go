@@ -15,13 +15,16 @@ type clientStore struct {
 	shared    map[Tier]*cachedClient
 	dedicated map[string]*cachedClient
 
-	// mu는 shared/dedicated http.Client 캐시의 동시 조회와 교체를 보호합니다.
+	// shared/dedicated http.Client 캐시의 동시 조회와 교체를 보호합니다.
 	mu sync.RWMutex
 }
 
 type cachedClient struct {
 	tier   Tier
 	client *http.Client
+
+	// 커넥션 풀 교체시 미완료된 요청을 기다리기 위해 사용됩니다.
+	wg sync.WaitGroup
 }
 
 // NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
@@ -62,17 +65,18 @@ func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Requ
 	}
 
 	decision := DecidePolicy(status)
-	client, err := defaultClients.client(decision)
+	cachedClient, err := defaultClients.client(decision)
 	if err != nil {
 		return err
 	}
+	defer cachedClient.release()
 
 	outReq, err := upstreamRequest(host, r)
 	if err != nil {
 		return err
 	}
 
-	resp, err := client.Do(outReq)
+	resp, err := cachedClient.client.Do(outReq)
 	if err != nil {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return err
@@ -129,7 +133,7 @@ func newClientStoreWithSharedClients() (*clientStore, error) {
 	return store, nil
 }
 
-func (s *clientStore) client(decision Decision) (*http.Client, error) {
+func (s *clientStore) client(decision Decision) (*cachedClient, error) {
 	if s == nil {
 		return nil, fmt.Errorf("%w: client store is nil", ErrInvalidConfig)
 	}
@@ -147,7 +151,7 @@ func (s *clientStore) client(decision Decision) (*http.Client, error) {
 	return s.dedicatedClient(decision)
 }
 
-func (s *clientStore) sharedClient(decision Decision) (*http.Client, error) {
+func (s *clientStore) sharedClient(decision Decision) (*cachedClient, error) {
 	service := normalizeService(decision.Service)
 
 	// 전용 client가 없는 서비스는 read lock만으로 shared client를 바로 반환합니다.
@@ -155,9 +159,9 @@ func (s *clientStore) sharedClient(decision Decision) (*http.Client, error) {
 	cached := s.shared[decision.Tier]
 	_, hasDedicated := s.dedicated[service]
 	if cached != nil && (!hasDedicated || service == "") {
-		client := cached.client
+		cached.acquire()
 		s.mu.RUnlock()
-		return client, nil
+		return cached, nil
 	}
 	s.mu.RUnlock()
 
@@ -168,7 +172,7 @@ func (s *clientStore) sharedClient(decision Decision) (*http.Client, error) {
 	// Dedicated=false 판단이 내려진 서비스는 전용 풀을 해제하고 shared 풀로 합류합니다.
 	if service != "" {
 		if oldClient, found := s.dedicated[service]; found {
-			oldClient.closeIdleConnections()
+			oldClient.retire()
 			delete(s.dedicated, service)
 		}
 	}
@@ -184,10 +188,11 @@ func (s *clientStore) sharedClient(decision Decision) (*http.Client, error) {
 		s.shared[decision.Tier] = cached
 	}
 
-	return cached.client, nil
+	cached.acquire()
+	return cached, nil
 }
 
-func (s *clientStore) dedicatedClient(decision Decision) (*http.Client, error) {
+func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) {
 	service := normalizeService(decision.Service)
 	if service == "" {
 		return nil, fmt.Errorf("%w: service is required for dedicated pool", ErrInvalidService)
@@ -197,9 +202,9 @@ func (s *clientStore) dedicatedClient(decision Decision) (*http.Client, error) {
 	s.mu.RLock()
 	cached := s.dedicated[service]
 	if cached != nil && cached.tier == decision.Tier {
-		client := cached.client
+		cached.acquire()
 		s.mu.RUnlock()
-		return client, nil
+		return cached, nil
 	}
 	s.mu.RUnlock()
 
@@ -210,7 +215,8 @@ func (s *clientStore) dedicatedClient(decision Decision) (*http.Client, error) {
 	// lock 대기 중 다른 고루틴이 같은 tier client를 만들었을 수 있어 다시 확인합니다.
 	cached = s.dedicated[service]
 	if cached != nil && cached.tier == decision.Tier {
-		return cached.client, nil
+		cached.acquire()
+		return cached, nil
 	}
 
 	// Transport 설정은 생성 후 변경하지 않으므로 tier 변경 시 새 client로 교체합니다.
@@ -219,13 +225,14 @@ func (s *clientStore) dedicatedClient(decision Decision) (*http.Client, error) {
 		return nil, err
 	}
 
-	// 기존 전용 client가 있으면 idle connection만 닫고 진행 중 요청은 건드리지 않습니다.
+	// 기존 전용 client는 새 요청에서 제외하고, 진행 중 요청이 끝난 뒤 idle connection을 닫습니다.
 	if cached != nil {
-		cached.closeIdleConnections()
+		cached.retire()
 	}
 	s.dedicated[service] = nextClient
 
-	return nextClient.client, nil
+	nextClient.acquire()
+	return nextClient, nil
 }
 
 func newCachedClient(tier Tier) (*cachedClient, error) {
@@ -253,6 +260,34 @@ func (c *cachedClient) closeIdleConnections() {
 	}
 
 	transport.CloseIdleConnections()
+}
+
+func (c *cachedClient) acquire() {
+	if c == nil {
+		return
+	}
+
+	c.wg.Add(1)
+}
+
+func (c *cachedClient) release() {
+	if c == nil {
+		return
+	}
+
+	c.wg.Done()
+}
+
+func (c *cachedClient) retire() {
+	if c == nil {
+		return
+	}
+
+	c.closeIdleConnections()
+	go func() {
+		c.wg.Wait()
+		c.closeIdleConnections()
+	}()
 }
 
 func normalizeDecisionTier(tier Tier) (Tier, error) {
