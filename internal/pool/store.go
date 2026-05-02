@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-var defaultClients = mustNewClientStore()
+var defaultClients = newClientStore()
 
 type clientStore struct {
 	shared    map[Tier]*cachedClient
@@ -18,27 +18,6 @@ type clientStore struct {
 }
 
 func newClientStore() *clientStore {
-	store, err := newClientStoreWithSharedClients()
-	if err != nil {
-		return &clientStore{
-			shared:    make(map[Tier]*cachedClient),
-			dedicated: make(map[string]*cachedClient),
-		}
-	}
-
-	return store
-}
-
-func mustNewClientStore() *clientStore {
-	store, err := newClientStoreWithSharedClients()
-	if err != nil {
-		panic(err)
-	}
-
-	return store
-}
-
-func newClientStoreWithSharedClients() (*clientStore, error) {
 	store := &clientStore{
 		shared:    make(map[Tier]*cachedClient, 3),
 		dedicated: make(map[string]*cachedClient),
@@ -47,13 +26,13 @@ func newClientStoreWithSharedClients() (*clientStore, error) {
 	for _, tier := range []Tier{TierNormal, TierHot, TierSuper} {
 		client, err := newCachedClient(tier)
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		store.shared[tier] = client
 	}
 
-	return store, nil
+	return store
 }
 
 func (s *clientStore) client(decision Decision) (*cachedClient, error) {
