@@ -17,26 +17,26 @@ func TestNewTransportAppliesTierConfig(t *testing.T) {
 		t.Fatalf("NewTransport returned error: %v", err)
 	}
 
-	if transport.MaxIdleConns != 3000 {
-		t.Fatalf("transport.MaxIdleConns = %d, want %d", transport.MaxIdleConns, 3000)
+	if transport.MaxIdleConns != 400 {
+		t.Fatalf("transport.MaxIdleConns = %d, want %d", transport.MaxIdleConns, 400)
 	}
-	if transport.MaxIdleConnsPerHost != 300 {
-		t.Fatalf("transport.MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, 300)
+	if transport.MaxIdleConnsPerHost != 8 {
+		t.Fatalf("transport.MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, 8)
 	}
-	if transport.MaxConnsPerHost != 800 {
-		t.Fatalf("transport.MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, 800)
+	if transport.MaxConnsPerHost != 0 {
+		t.Fatalf("transport.MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, 0)
 	}
-	if transport.IdleConnTimeout != 90*time.Second {
-		t.Fatalf("transport.IdleConnTimeout = %s, want %s", transport.IdleConnTimeout, 90*time.Second)
+	if transport.IdleConnTimeout != 360*time.Second {
+		t.Fatalf("transport.IdleConnTimeout = %s, want %s", transport.IdleConnTimeout, 360*time.Second)
 	}
-	if transport.ResponseHeaderTimeout != 30*time.Second {
-		t.Fatalf("transport.ResponseHeaderTimeout = %s, want %s", transport.ResponseHeaderTimeout, 30*time.Second)
+	if transport.ResponseHeaderTimeout != 0 {
+		t.Fatalf("transport.ResponseHeaderTimeout = %s, want %s", transport.ResponseHeaderTimeout, time.Duration(0))
 	}
-	if transport.TLSHandshakeTimeout != 10*time.Second {
-		t.Fatalf("transport.TLSHandshakeTimeout = %s, want %s", transport.TLSHandshakeTimeout, 10*time.Second)
+	if transport.TLSHandshakeTimeout != 40*time.Second {
+		t.Fatalf("transport.TLSHandshakeTimeout = %s, want %s", transport.TLSHandshakeTimeout, 40*time.Second)
 	}
-	if transport.ExpectContinueTimeout != time.Second {
-		t.Fatalf("transport.ExpectContinueTimeout = %s, want %s", transport.ExpectContinueTimeout, time.Second)
+	if transport.ExpectContinueTimeout != 4*time.Second {
+		t.Fatalf("transport.ExpectContinueTimeout = %s, want %s", transport.ExpectContinueTimeout, 4*time.Second)
 	}
 }
 

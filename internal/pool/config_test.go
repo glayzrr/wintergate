@@ -14,8 +14,8 @@ func TestConfigForTierReturnsNormalWhenTierBlank(t *testing.T) {
 	if config.Tier != TierNormal {
 		t.Fatalf("config.Tier = %q, want %q", config.Tier, TierNormal)
 	}
-	if config.MaxIdleConns != 200 {
-		t.Fatalf("config.MaxIdleConns = %d, want %d", config.MaxIdleConns, 200)
+	if config.MaxIdleConns != 100 {
+		t.Fatalf("config.MaxIdleConns = %d, want %d", config.MaxIdleConns, 100)
 	}
 }
 
@@ -30,23 +30,23 @@ func TestConfigForTierReturnsTierConfig(t *testing.T) {
 		{
 			name:                "normal",
 			tier:                TierNormal,
-			maxIdleConns:        200,
-			maxIdleConnsPerHost: 20,
-			maxConnsPerHost:     50,
+			maxIdleConns:        100,
+			maxIdleConnsPerHost: 2,
+			maxConnsPerHost:     0,
 		},
 		{
 			name:                "hot",
 			tier:                TierHot,
-			maxIdleConns:        1000,
-			maxIdleConnsPerHost: 100,
-			maxConnsPerHost:     300,
+			maxIdleConns:        200,
+			maxIdleConnsPerHost: 4,
+			maxConnsPerHost:     0,
 		},
 		{
 			name:                "super",
 			tier:                TierSuper,
-			maxIdleConns:        3000,
-			maxIdleConnsPerHost: 300,
-			maxConnsPerHost:     800,
+			maxIdleConns:        400,
+			maxIdleConnsPerHost: 8,
+			maxConnsPerHost:     0,
 		},
 	}
 
