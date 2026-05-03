@@ -464,7 +464,7 @@ import "wintergate/internal/gateway"
 - [type Request](<#Request>)
 - [type RouteTask](<#RouteTask>)
   - [func NewRouteTask\(registry \*internalconfig.Registry\) \*RouteTask](<#NewRouteTask>)
-  - [func \(t \*RouteTask\) Run\(ctx context.Context, state \*State\) error](<#RouteTask.Run>)
+  - [func \(t \*RouteTask\) Run\(\_ context.Context, state \*State\) error](<#RouteTask.Run>)
 - [type State](<#State>)
 - [type Task](<#Task>)
 - [type TokenDecoder](<#TokenDecoder>)
@@ -577,6 +577,7 @@ Request 게이트웨이가 수신한 요청의 핵심 정보만 분리해 전달
 
 ```go
 type Request struct {
+    Scheme              string
     Host                string
     Port                string
     Service             string
@@ -612,7 +613,7 @@ NewRouteTask 라우트 정책 조회용 RouteTask를 생성합니다.
 ### func \(\*RouteTask\) Run
 
 ```go
-func (t *RouteTask) Run(ctx context.Context, state *State) error
+func (t *RouteTask) Run(_ context.Context, state *State) error
 ```
 
 Run 요청의 host와 port로 서비스를 식별하고 매칭된 라우트 정책을 상태에 기록합니다.
@@ -637,6 +638,7 @@ Task 게이트웨이 요청 처리 중 개별 작업 단위를 정의합니다.
 
 ```go
 type Task interface {
+    // Run 요청 처리 상태를 읽거나 갱신하고 실패 시 에러를 반환합니다.
     Run(ctx context.Context, state *State) error
 }
 ```
@@ -688,7 +690,7 @@ import "wintergate/internal/pool"
 ## Index
 
 - [Variables](<#variables>)
-- [func HandleRequest\(serviceName, host string, w http.ResponseWriter, r \*http.Request\) error](<#HandleRequest>)
+- [func HandleRequest\(serviceName, address string, w http.ResponseWriter, r \*http.Request\) error](<#HandleRequest>)
 - [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
 - [func RegisterPolicies\(policies \[\]Policy\) error](<#RegisterPolicies>)
 - [type Config](<#Config>)
@@ -732,7 +734,7 @@ var (
 ## func HandleRequest
 
 ```go
-func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Request) error
+func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request) error
 ```
 
 HandleRequest 서비스 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
