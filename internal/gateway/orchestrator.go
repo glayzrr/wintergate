@@ -8,6 +8,7 @@ import (
 
 // Task 게이트웨이 요청 처리 중 개별 작업 단위를 정의합니다.
 type Task interface {
+	// Run 요청 처리 상태를 읽거나 갱신하고 실패 시 에러를 반환합니다.
 	Run(ctx context.Context, state *State) error
 }
 
@@ -26,6 +27,7 @@ func NewOrchestrator(tasks ...Task) *Orchestrator {
 // Receive 게이트웨이로 들어온 요청에 대해 등록된 작업을 순차 실행합니다.
 func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
 	trimmedService := strings.TrimSpace(request.Service)
+	trimmedScheme := strings.TrimSpace(request.Scheme)
 	trimmedHost := strings.TrimSpace(request.Host)
 	trimmedPort := strings.TrimSpace(request.Port)
 	trimmedMethod := strings.TrimSpace(request.Method)
@@ -40,6 +42,7 @@ func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
 
 	state := &State{
 		Request: Request{
+			Scheme:               trimmedScheme,
 			Host:                 trimmedHost,
 			Port:                 trimmedPort,
 			Service:             trimmedService,

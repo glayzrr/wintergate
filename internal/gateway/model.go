@@ -9,6 +9,7 @@ import (
 
 // Request 게이트웨이가 수신한 요청의 핵심 정보만 분리해 전달합니다.
 type Request struct {
+	Scheme               string
 	Host                 string
 	Port                 string
 	Service             string

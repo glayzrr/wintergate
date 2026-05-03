@@ -5,47 +5,43 @@ import (
 	"testing"
 )
 
-func TestSettingsUnmarshalParsesRoutesAndRateLimit(t *testing.T) {
+func TestSettingsUnmarshalParsesGlobalAndRoutes(t *testing.T) {
 	var settings Settings
 
-	err := json.Unmarshal([]byte(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}},{"path":"/v3/api-docs/**","method":"GET","service":"order-service","roles":["ADMIN"]}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`), &settings)
+	err := json.Unmarshal([]byte(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"routes":[{"name":"order-service","host":"localhost","port":8080,"threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]},{"path":"/v3/api-docs/**","method":"GET","roles":[]}]}]}`), &settings)
 	if err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
 
-	if settings.Auth == nil {
-		t.Fatal("settings.Auth is nil")
+	if settings.Global == nil {
+		t.Fatal("settings.Global is nil")
 	}
 
-	if settings.Routes == nil {
-		t.Fatal("settings.Routes is nil")
+	if settings.Global.Auth == nil {
+		t.Fatal("settings.Global.Auth is nil")
 	}
 
-	if len(settings.Routes.Protected) != 2 {
-		t.Fatalf("len(settings.Routes.Protected) = %d, want %d", len(settings.Routes.Protected), 2)
+	if len(settings.Routes) != 1 {
+		t.Fatalf("len(settings.Routes) = %d, want %d", len(settings.Routes), 1)
 	}
 
-	if settings.Routes.Protected[0].AccessWindow == nil {
-		t.Fatal("settings.Routes.Protected[0].AccessWindow is nil")
+	if settings.Routes[0].Name != "order-service" {
+		t.Fatalf("settings.Routes[0].Name = %q, want %q", settings.Routes[0].Name, "order-service")
 	}
 
-	if settings.Routes.Protected[0].AccessWindow.Timezone != "Asia/Seoul" {
-		t.Fatalf(
-			"settings.Routes.Protected[0].AccessWindow.Timezone = %q, want %q",
-			settings.Routes.Protected[0].AccessWindow.Timezone,
-			"Asia/Seoul",
-		)
+	if settings.Routes[0].Threshold == nil {
+		t.Fatal("settings.Routes[0].Threshold is nil")
 	}
 
-	if len(settings.RateLimit) != 1 {
-		t.Fatalf("len(settings.RateLimit) = %d, want %d", len(settings.RateLimit), 1)
+	if settings.Routes[0].Threshold.Hot.InFlight != 14 {
+		t.Fatalf("settings.Routes[0].Threshold.Hot.InFlight = %d, want %d", settings.Routes[0].Threshold.Hot.InFlight, 14)
 	}
 
-	if settings.RateLimit[0].Limit != 10 {
-		t.Fatalf("settings.RateLimit[0].Limit = %d, want %d", settings.RateLimit[0].Limit, 10)
+	if len(settings.Routes[0].Endpoints) != 2 {
+		t.Fatalf("len(settings.Routes[0].Endpoints) = %d, want %d", len(settings.Routes[0].Endpoints), 2)
 	}
 
-	if settings.RateLimit[0].Duration != "1m" {
-		t.Fatalf("settings.RateLimit[0].Duration = %q, want %q", settings.RateLimit[0].Duration, "1m")
+	if len(settings.Routes[0].Endpoints[1].Roles) != 0 {
+		t.Fatalf("len(settings.Routes[0].Endpoints[1].Roles) = %d, want %d", len(settings.Routes[0].Endpoints[1].Roles), 0)
 	}
 }

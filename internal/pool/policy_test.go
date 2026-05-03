@@ -29,10 +29,9 @@ func TestPolicyRegistryDecideReturnsHotWhenRegisteredHotThresholdReached(t *test
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
-			Service:       "order-service",
-			Hot:           Threshold{RPS: 100, InFlight: 50},
-			Super:         Threshold{RPS: 500, InFlight: 200},
-			DedicatedFrom: TierHot,
+			Service: "order-service",
+			Hot:     Threshold{RPS: 100, InFlight: 50},
+			Super:   Threshold{RPS: 500, InFlight: 200},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -50,8 +49,8 @@ func TestPolicyRegistryDecideReturnsHotWhenRegisteredHotThresholdReached(t *test
 	if decision.Tier != TierHot {
 		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierHot)
 	}
-	if !decision.Dedicated {
-		t.Fatal("decision.Dedicated = false, want true")
+	if decision.Dedicated {
+		t.Fatal("decision.Dedicated = true, want false")
 	}
 }
 
@@ -59,10 +58,9 @@ func TestPolicyRegistryDecideReturnsSuperWhenRegisteredSuperThresholdReached(t *
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
-			Service:       "order-service",
-			Hot:           Threshold{RPS: 100, InFlight: 50},
-			Super:         Threshold{RPS: 500, InFlight: 200},
-			DedicatedFrom: TierSuper,
+			Service: "order-service",
+			Hot:     Threshold{RPS: 100, InFlight: 50},
+			Super:   Threshold{RPS: 500, InFlight: 200},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -77,8 +75,8 @@ func TestPolicyRegistryDecideReturnsSuperWhenRegisteredSuperThresholdReached(t *
 	if decision.Tier != TierSuper {
 		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierSuper)
 	}
-	if !decision.Dedicated {
-		t.Fatal("decision.Dedicated = false, want true")
+	if decision.Dedicated {
+		t.Fatal("decision.Dedicated = true, want false")
 	}
 }
 
@@ -157,12 +155,6 @@ func TestPolicyRegistryRegisterReturnsErrorWhenInvalid(t *testing.T) {
 			name: "negative rps",
 			policies: []Policy{
 				{Service: "order-service", Hot: Threshold{RPS: -1}},
-			},
-		},
-		{
-			name: "unsupported dedicated tier",
-			policies: []Policy{
-				{Service: "order-service", DedicatedFrom: "burst"},
 			},
 		},
 	}

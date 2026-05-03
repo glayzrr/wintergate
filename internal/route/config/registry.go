@@ -71,7 +71,7 @@ func (r *Registry) Register(cfg Config) error {
 
 		serviceRoutes := registeredRoutes[service]
 		if hasRouteInfo(serviceRoutes.infos, path, httpMethod) {
-			continue
+			return fmt.Errorf("%w: duplicate route %s %s %s", ErrInvalidConfig, service, httpMethod, path)
 		}
 
 		serviceRoutes.infos = append(serviceRoutes.infos, RegistryRouteInfo{
@@ -170,6 +170,10 @@ func buildServiceKey(host, port string) (serviceKey, error) {
 	}
 	if parsedPort <= 0 || parsedPort > 65535 {
 		return serviceKey{}, fmt.Errorf("%w: port is invalid", ErrInvalidConfig)
+	}
+
+	if strings.Contains(trimmedHost, "://") || strings.ContainsAny(trimmedHost, "/?#@") {
+		return serviceKey{}, fmt.Errorf("%w: host must not include scheme, path, query, or user info", ErrInvalidConfig)
 	}
 
 	return serviceKey{

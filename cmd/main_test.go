@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -92,10 +95,76 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		t.Fatalf("newRouter returned error: %v", err)
 	}
 
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/orders" {
+			t.Errorf("upstream path = %q, want %q", r.URL.Path, "/orders")
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+		if _, err := w.Write([]byte("upstream ok")); err != nil {
+			t.Errorf("Write returned error: %v", err)
+		}
+	}))
+	defer upstream.Close()
+
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+
+	serviceHost, servicePort, err := net.SplitHostPort(upstreamURL.Host)
+	if err != nil {
+		t.Fatalf("SplitHostPort returned error: %v", err)
+	}
+
+	servicePortNumber, err := strconv.Atoi(servicePort)
+	if err != nil {
+		t.Fatalf("Atoi returned error: %v", err)
+	}
+
+	configBody, err := json.Marshal(map[string]any{
+		"global": map[string]any{
+			"auth": map[string]any{
+				"jwt_algorithm":  "HS256",
+				"jwt_audience":   "wintergate",
+				"jwt_clock_skew": "1m",
+				"jwt_issuer":     "auth-service",
+				"jwt_secret":     "shared-secret",
+			},
+		},
+		"routes": []map[string]any{
+			{
+				"name": "order-service",
+				"host": serviceHost,
+				"port": servicePortNumber,
+				"threshold": map[string]any{
+					"hot": map[string]any{
+						"rps":       100,
+						"in-flight": 14,
+					},
+					"super": map[string]any{
+						"rps":       150,
+						"in-flight": 50,
+					},
+				},
+				"endpoints": []map[string]any{
+					{
+						"path":   "/orders",
+						"method": http.MethodGet,
+						"roles":  []string{},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+
 	configRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/api/config",
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"shared-secret"},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
+		strings.NewReader(string(configBody)),
 	)
 	configRequest.Header.Set("Content-Type", "application/json")
 	configRequest.RemoteAddr = "192.0.2.10:43123"
@@ -108,27 +177,18 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
-	request.Header.Set("X-Wintergate-Service", "order-service")
+	request.Header.Set("X-Service-Scheme", upstreamURL.Scheme)
+	request.Header.Set("X-Service-Host", serviceHost)
+	request.Header.Set("X-Service-Port", servicePort)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusAccepted)
 	}
 
-	response := decodeAPIResponse(t, recorder)
-	if !response.Success {
-		t.Fatalf("response.Success = %v, want %v", response.Success, true)
-	}
-
-	data, ok := response.Data.(map[string]any)
-	if !ok {
-		t.Fatalf("response.Data type = %T, want map[string]any", response.Data)
-	}
-
-	received, ok := data["received"].(bool)
-	if !ok || !received {
-		t.Fatalf("data[received] = %#v, want true", data["received"])
+	if recorder.Body.String() != "upstream ok" {
+		t.Fatalf("body = %q, want %q", recorder.Body.String(), "upstream ok")
 	}
 }
 

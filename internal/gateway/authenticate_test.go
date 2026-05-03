@@ -76,6 +76,25 @@ func TestAuthenticateTaskRunReturnsWrappedBearerError(t *testing.T) {
 	}
 }
 
+func TestAuthenticateTaskRunReturnsErrorWhenDecoderNil(t *testing.T) {
+	task := NewAuthenticateTask(nil)
+
+	state := &State{
+		Request: Request{
+			AuthorizationHeader: "Bearer token-value",
+		},
+	}
+
+	err := task.Run(context.Background(), state)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+
+	if !errors.Is(err, ErrNilTokenDecoder) {
+		t.Fatalf("error = %v, want ErrNilTokenDecoder", err)
+	}
+}
+
 type stubTokenDecoder struct {
 	claims internalauth.Claims
 	err    error

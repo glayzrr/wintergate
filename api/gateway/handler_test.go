@@ -18,6 +18,7 @@ import (
 	internalauth "wintergate/internal/auth"
 	authconfig "wintergate/internal/auth/config"
 	internalgateway "wintergate/internal/gateway"
+	routeconfig "wintergate/internal/route/config"
 
 	"github.com/gin-gonic/gin"
 )
@@ -137,13 +138,19 @@ func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testin
 	}
 }
 
-func TestHandlerReceivePassesServiceHeaderToOrchestrator(t *testing.T) {
+func TestHandlerReceivePassesServiceAddressHeadersToOrchestrator(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	orchestrator := internalgateway.NewOrchestrator(
 		internalgatewayTaskFunc(func(_ context.Context, state *internalgateway.State) error {
-			if state.Request.Service != "order-service" {
-				t.Fatalf("state.Request.Service = %q, want %q", state.Request.Service, "order-service")
+			if state.Request.Host != "localhost" {
+				t.Fatalf("state.Request.Host = %q, want %q", state.Request.Host, "localhost")
+			}
+			if state.Request.Port != "8080" {
+				t.Fatalf("state.Request.Port = %q, want %q", state.Request.Port, "8080")
+			}
+			if state.Request.Scheme != "https" {
+				t.Fatalf("state.Request.Scheme = %q, want %q", state.Request.Scheme, "https")
 			}
 
 			return nil
@@ -155,7 +162,9 @@ func TestHandlerReceivePassesServiceHeaderToOrchestrator(t *testing.T) {
 	handler.RegisterRoutes(router)
 
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
-	request.Header.Set(requestHeaderService, "order-service")
+	request.Header.Set(requestHeaderScheme, "https")
+	request.Header.Set(requestHeaderHost, "localhost")
+	request.Header.Set(requestHeaderPort, "8080")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
@@ -279,6 +288,8 @@ func TestReceiveFailure(t *testing.T) {
 		message    string
 	}{
 		{name: "invalid request", err: internalgateway.ErrInvalidRequest, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
+		{name: "invalid route config", err: routeconfig.ErrInvalidConfig, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
+		{name: "service not found", err: routeconfig.ErrServiceNotFound, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
 		{name: "invalid authorization header", err: internalauth.ErrInvalidAuthorizationHeader, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
 		{name: "invalid audience", err: internalauth.ErrInvalidAudience, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
 		{name: "invalid issuer", err: internalauth.ErrInvalidIssuer, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
@@ -319,6 +330,7 @@ func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) respon
 type internalgatewayTaskFunc func(ctx context.Context, state *internalgateway.State) error
 
 func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgateway.State) error {
+	// 테스트에서 주입한 함수로 Orchestrator의 task 실행을 대체합니다.
 	return fn(ctx, state)
 }
 

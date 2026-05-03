@@ -21,7 +21,7 @@ func NewRouteTask(registry *internalconfig.Registry) *RouteTask {
 }
 
 // Run 요청의 host와 port로 서비스를 식별하고 매칭된 라우트 정책을 상태에 기록합니다.
-func (t *RouteTask) Run(ctx context.Context, state *State) error {
+func (t *RouteTask) Run(_ context.Context, state *State) error {
 	// 라우트 정책 저장소가 없으면 요청을 분류할 수 없으므로 즉시 실패합니다.
 	if t.registry == nil {
 		return fmt.Errorf("%w: route registry is required", ErrInvalidRequest)

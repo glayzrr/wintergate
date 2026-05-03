@@ -36,6 +36,11 @@ func (t *AuthenticateTask) Run(_ context.Context, state *State) error {
 		return fmt.Errorf("extract bearer token: %w", err)
 	}
 
+	// 토큰을 검증할 decoder가 없으면 인증 설정이 불완전하므로 실패합니다.
+	if t.decoder == nil {
+		return fmt.Errorf("%w: token decoder is required", ErrNilTokenDecoder)
+	}
+
 	// 토큰 서명과 claims를 검증하고 이후 task에서 사용할 수 있도록 저장합니다.
 	claims, err := t.decoder.Decode(token)
 	if err != nil {

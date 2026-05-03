@@ -37,7 +37,7 @@ func makePool(config Config) (*http.Transport, error) {
 }
 
 // HandleRequest 서비스 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
-func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Request) error {
+func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request) error {
 	// 요청 시작과 종료 시점을 기록해 서비스별 트래픽 상태를 갱신합니다.
 	doneFunc := StartRecord(serviceName)
 	defer doneFunc()
@@ -56,7 +56,7 @@ func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Requ
 	defer cachedClient.release()
 
 	// 원본 요청을 업스트림 서버로 전달할 수 있는 형태로 복제합니다.
-	outReq, err := upstreamRequest(host, r)
+	outReq, err := upstreamRequest(address, r)
 	if err != nil {
 		return err
 	}
@@ -80,12 +80,12 @@ func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Requ
 	return nil
 }
 
-func upstreamRequest(host string, r *http.Request) (*http.Request, error) {
+func upstreamRequest(address string, r *http.Request) (*http.Request, error) {
 	if r == nil {
 		return nil, fmt.Errorf("%w: request is nil", ErrInvalidConfig)
 	}
 
-	targetURL, err := upstreamURL(host, r.URL)
+	targetURL, err := upstreamURL(address, r.URL)
 	if err != nil {
 		return nil, err
 	}

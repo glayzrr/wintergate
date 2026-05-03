@@ -189,3 +189,46 @@ func TestRegistryRouteInfosReturnsCopiedRoles(t *testing.T) {
 		t.Fatalf("routeInfos[0].Roles[0] = %q, want %q", routeInfos[0].Roles[0], "ADMIN")
 	}
 }
+
+func TestRegistryServiceForMatchesHostAndPort(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(Config{
+		Services: []Service{
+			{Name: "order-service", Host: "localhost", Port: 8443},
+		},
+		Entries: []Entry{
+			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
+		},
+	}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	service, err := registry.ServiceFor("localhost", "8443")
+	if err != nil {
+		t.Fatalf("ServiceFor returned error: %v", err)
+	}
+
+	if service != "order-service" {
+		t.Fatalf("service = %q, want %q", service, "order-service")
+	}
+}
+
+func TestRegistryRegisterReturnsErrorWhenHostIncludesScheme(t *testing.T) {
+	registry := NewRegistry()
+
+	err := registry.Register(Config{
+		Services: []Service{
+			{Name: "order-service", Host: "https://localhost", Port: 8080},
+		},
+		Entries: []Entry{
+			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
+		},
+	})
+	if err == nil {
+		t.Fatal("Register returned nil error")
+	}
+
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}

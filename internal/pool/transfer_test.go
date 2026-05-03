@@ -121,9 +121,8 @@ func TestHandleRequestReleasesRetiredDedicatedClientAfterContextTimeout(t *testi
 
 	if err := RegisterPolicies([]Policy{
 		{
-			Service:       "order-service",
-			Hot:           Threshold{InFlight: 1},
-			DedicatedFrom: TierHot,
+			Service: "order-service",
+			Hot:     Threshold{InFlight: 1},
 		},
 	}); err != nil {
 		t.Fatalf("RegisterPolicies returned error: %v", err)

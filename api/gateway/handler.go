@@ -9,6 +9,7 @@ import (
 	internalauth "wintergate/internal/auth"
 	authconfig "wintergate/internal/auth/config"
 	internalgateway "wintergate/internal/gateway"
+	routeconfig "wintergate/internal/route/config"
 
 	"github.com/gin-gonic/gin"
 )
@@ -42,6 +43,7 @@ func (h *Handler) Receive(ctx *gin.Context) {
 	}
 
 	err := h.orchestrator.Receive(ctx.Request.Context(), internalgateway.Request{
+		Scheme:              ctx.GetHeader(requestHeaderScheme),
 		Host:                ctx.GetHeader(requestHeaderHost),
 		Port:                ctx.GetHeader(requestHeaderPort),
 		Method:              ctx.Request.Method,
@@ -77,6 +79,10 @@ func (h *Handler) Receive(ctx *gin.Context) {
 func receiveFailure(err error) (int, string) {
 	switch {
 	case errors.Is(err, internalgateway.ErrInvalidRequest):
+		return http.StatusBadRequest, responseReceiveFailed
+	case errors.Is(err, routeconfig.ErrInvalidConfig):
+		return http.StatusBadRequest, responseReceiveFailed
+	case errors.Is(err, routeconfig.ErrServiceNotFound):
 		return http.StatusBadRequest, responseReceiveFailed
 	case errors.Is(err, internalauth.ErrInvalidAuthorizationHeader):
 		return http.StatusUnauthorized, responseUnauthorized
