@@ -145,7 +145,7 @@ func TestHandleRequestReleasesRetiredDedicatedClientAfterContextTimeout(t *testi
 	}
 	oldClientDone := waitCachedClient(oldClient)
 
-	replacement, err := defaultClients.client(Decision{
+	replacement, err := defaultClients.GetClient(Decision{
 		Service:   "order-service",
 		Tier:      TierSuper,
 		Dedicated: true,
@@ -171,7 +171,7 @@ func TestHandleRequestReleasesRetiredDedicatedClientAfterContextTimeout(t *testi
 
 	waitForDone(t, oldClientDone, time.Second, "retired client wait group")
 
-	status, err := StatusFor("order-service")
+	status, err := GetStatus("order-service")
 	if err != nil {
 		t.Fatalf("StatusFor returned error: %v", err)
 	}
@@ -415,7 +415,7 @@ func waitForRequestError(t *testing.T, errCh <-chan error) error {
 func mustClient(t *testing.T, store *clientStore, decision Decision) *cachedClient {
 	t.Helper()
 
-	client, err := store.client(decision)
+	client, err := store.GetClient(decision)
 	if err != nil {
 		t.Fatalf("client returned error: %v", err)
 	}

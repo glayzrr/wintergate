@@ -33,7 +33,7 @@ func (h *Handler) RegisterRoutes(router *gin.Engine) {
 // Receive 등록되지 않은 모든 외부 요청을 게이트웨이 수준에서 수신합니다.
 func (h *Handler) Receive(ctx *gin.Context) {
 	requestPath := ctx.Request.URL.Path
-	if requestPath == configapi.DefaultRoute {
+	if requestPath == configapi.ConfigRoute {
 		ctx.AbortWithStatusJSON(http.StatusNotFound, responseapi.APIResponse{
 			Success: false,
 			Message: responseNotFound,

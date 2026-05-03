@@ -36,27 +36,32 @@ func makePool(config Config) (*http.Transport, error) {
 	return transport, nil
 }
 
+// HandleRequest 서비스 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
 func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Request) error {
+	// 요청 시작과 종료 시점을 기록해 서비스별 트래픽 상태를 갱신합니다.
 	doneFunc := StartRecord(serviceName)
 	defer doneFunc()
 
-	status, err := StatusFor(serviceName)
+	status, err := GetStatus(serviceName)
 	if err != nil {
 		return err
 	}
 
+	// 현재 트래픽 상태를 기준으로 사용할 풀 티어와 전용 풀 여부를 결정합니다.
 	decision := DecidePolicy(status)
-	cachedClient, err := defaultClients.client(decision)
+	cachedClient, err := defaultClients.GetClient(decision)
 	if err != nil {
 		return err
 	}
 	defer cachedClient.release()
 
+	// 원본 요청을 업스트림 서버로 전달할 수 있는 형태로 복제합니다.
 	outReq, err := upstreamRequest(host, r)
 	if err != nil {
 		return err
 	}
 
+	// 선택된 클라이언트로 업스트림에 요청하고 응답을 클라이언트에게 그대로 전달합니다.
 	resp, err := cachedClient.client.Do(outReq)
 	if err != nil {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)

@@ -28,7 +28,7 @@ func NewHandler(registerer *internalconfig.Registerer) (*Handler, error) {
 
 // RegisterRoutes 설정 수신 엔드포인트를 Gin 라우터에 등록합니다.
 func (h *Handler) RegisterRoutes(router gin.IRouter) {
-	router.POST(DefaultRoute, h.EnrollConfig)
+	router.POST(ConfigRoute, h.EnrollConfig)
 }
 
 // EnrollConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.

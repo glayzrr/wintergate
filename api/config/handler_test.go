@@ -47,7 +47,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodPost,
-		DefaultRoute,
+		ConfigRoute,
 		strings.NewReader(`{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
@@ -99,7 +99,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 	router := gin.New()
 	handler.RegisterRoutes(router)
 
-	request := httptest.NewRequest(http.MethodPost, DefaultRoute, strings.NewReader(`{`))
+	request := httptest.NewRequest(http.MethodPost, ConfigRoute, strings.NewReader(`{`))
 	request.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -133,7 +133,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodPost,
-		DefaultRoute,
+		ConfigRoute,
 		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")

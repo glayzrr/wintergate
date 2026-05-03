@@ -35,7 +35,7 @@ func newClientStore() *clientStore {
 	return store
 }
 
-func (s *clientStore) client(decision Decision) (*cachedClient, error) {
+func (s *clientStore) GetClient(decision Decision) (*cachedClient, error) {
 	if s == nil {
 		return nil, fmt.Errorf("%w: client store is nil", ErrInvalidConfig)
 	}

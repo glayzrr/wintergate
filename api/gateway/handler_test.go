@@ -88,7 +88,7 @@ func TestHandlerReceiveLeavesConfigRouteUnclaimed(t *testing.T) {
 	router := gin.New()
 	handler.RegisterRoutes(router)
 
-	request := httptest.NewRequest(http.MethodGet, configapi.DefaultRoute, nil)
+	request := httptest.NewRequest(http.MethodGet, configapi.ConfigRoute, nil)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 

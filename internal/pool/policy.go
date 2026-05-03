@@ -110,6 +110,8 @@ func (r *PolicyRegistry) Policy(service string) (Policy, bool) {
 // Decide 등록 정책이 있으면 RPS/in-flight 기준으로 tier와 전용 풀 여부를 결정합니다.
 func (r *PolicyRegistry) Decide(status Status) Decision {
 	normalizedService := normalizeService(status.Service)
+
+	// TODO 서버 기본 설정에 따라 티어 설정하기
 	decision := Decision{
 		Service: normalizedService,
 		Tier:    TierNormal,
@@ -118,6 +120,7 @@ func (r *PolicyRegistry) Decide(status Status) Decision {
 		return decision
 	}
 
+	// 등록된 정책이 없으면 기본 정책을 반환합니다.
 	policy, found := r.Policy(normalizedService)
 	if !found {
 		return decision

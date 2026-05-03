@@ -73,8 +73,8 @@ func StartRecord(service string) DoneFunc {
 	return DefaultRecorder().Start(service)
 }
 
-// StatusFor 기본 Recorder에서 서비스 트래픽 상태를 반환합니다.
-func StatusFor(service string) (Status, error) {
+// GetStatus 기본 Recorder에서 서비스 트래픽 상태를 반환합니다.
+func GetStatus(service string) (Status, error) {
 	return DefaultRecorder().Status(service)
 }
 
