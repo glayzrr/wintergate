@@ -116,7 +116,7 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	}
 }
 
-func TestHandleRequestReleasesRetiredDedicatedClientAfterContextTimeout(t *testing.T) {
+func TestHandleRequestReleasesSharedTierClientAfterContextTimeout(t *testing.T) {
 	resetDefaultState(t)
 
 	if err := RegisterPolicies([]Policy{
@@ -138,37 +138,23 @@ func TestHandleRequestReleasesRetiredDedicatedClientAfterContextTimeout(t *testi
 	errCh := handleRequestAsync(t, "order-service", upstream.URL, 200*time.Millisecond)
 	waitForSignal(t, upstreamStarted, "first upstream request")
 
-	oldClient := dedicatedCachedClient(t, defaultClients, "order-service")
-	if oldClient.tier != TierHot {
-		t.Fatalf("dedicated tier = %q, want %q", oldClient.tier, TierHot)
+	hotClient := sharedCachedClient(t, defaultClients, TierHot)
+	if hotClient.tier != TierHot {
+		t.Fatalf("shared tier = %q, want %q", hotClient.tier, TierHot)
 	}
-	oldClientDone := waitCachedClient(oldClient)
-
-	replacement, err := defaultClients.ClientFor(Decision{
-		Service:   "order-service",
-		Tier:      TierSuper,
-		Dedicated: true,
-	})
-	if err != nil {
-		t.Fatalf("client returned error: %v", err)
+	if _, found := defaultClients.dedicatedTier("order-service"); found {
+		t.Fatal("dedicated client exists after shared policy decision")
 	}
-	replacement.release()
+	hotClientDone := waitCachedClient(hotClient)
 
-	if replacement == oldClient {
-		t.Fatal("client store reused old dedicated client after tier changed")
-	}
-	if tier, found := defaultClients.dedicatedTier("order-service"); !found || tier != TierSuper {
-		t.Fatalf("dedicated tier = (%q, %t), want (%q, %t)", tier, found, TierSuper, true)
-	}
+	assertStillWaiting(t, hotClientDone, 20*time.Millisecond, "shared client drained before the in-flight request timed out")
 
-	assertStillWaiting(t, oldClientDone, 20*time.Millisecond, "retired client drained before the in-flight request timed out")
-
-	err = waitForRequestError(t, errCh)
+	err := waitForRequestError(t, errCh)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("HandleRequest error = %v, want context deadline exceeded", err)
 	}
 
-	waitForDone(t, oldClientDone, time.Second, "retired client wait group")
+	waitForDone(t, hotClientDone, time.Second, "shared client wait group")
 
 	status, err := StatusFor("order-service")
 	if err != nil {
@@ -337,15 +323,15 @@ func handleRequestAsync(t *testing.T, service, host string, timeout time.Duratio
 	return errCh
 }
 
-func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *cachedClient {
+func sharedCachedClient(t *testing.T, store *clientStore, tier Tier) *cachedClient {
 	t.Helper()
 
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	client := store.dedicated[normalizeService(service)]
+	client := store.shared[tier]
 	if client == nil {
-		t.Fatalf("dedicated client for %q not found", service)
+		t.Fatalf("shared client for %q not found", tier)
 	}
 
 	return client

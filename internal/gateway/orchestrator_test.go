@@ -148,6 +148,8 @@ func TestReceiveReturnsWrappedTaskError(t *testing.T) {
 
 type TaskFunc func(ctx context.Context, state *State) error
 
+// Run 테스트용 gateway task 함수를 실행합니다.
 func (fn TaskFunc) Run(ctx context.Context, state *State) error {
+	// 테스트에서 주입한 함수로 Task 실행 흐름을 대체합니다.
 	return fn(ctx, state)
 }

@@ -80,7 +80,7 @@ func TestPolicyRegistryDecideReturnsSuperWhenRegisteredSuperThresholdReached(t *
 	}
 }
 
-func TestPolicyRegistryDecideDoesNotDedicateWhenDedicatedFromBlank(t *testing.T) {
+func TestPolicyRegistryDecideDoesNotDedicateWhenThresholdReached(t *testing.T) {
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{

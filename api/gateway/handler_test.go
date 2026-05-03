@@ -329,6 +329,7 @@ func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) respon
 
 type internalgatewayTaskFunc func(ctx context.Context, state *internalgateway.State) error
 
+// Run 테스트용 gateway task 함수를 실행합니다.
 func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgateway.State) error {
 	// 테스트에서 주입한 함수로 Orchestrator의 task 실행을 대체합니다.
 	return fn(ctx, state)
