@@ -5,59 +5,46 @@ import (
 	"fmt"
 	"strings"
 
-	internalroute "wintergate/internal/route"
-
-	internalauth "wintergate/internal/auth"
 	internalconfig "wintergate/internal/route/config"
 )
 
+// RouteTask 요청 주소에 대응하는 서비스와 라우트 정책을 찾습니다.
 type RouteTask struct {
-	router  *internalroute.Router
-	decoder *internalauth.Decoder
+	registry *internalconfig.Registry
 }
 
-func NewRouteTask(router *internalroute.Router, decoder *internalauth.Decoder) *RouteTask {
+// NewRouteTask 라우트 정책 조회용 RouteTask를 생성합니다.
+func NewRouteTask(registry *internalconfig.Registry) *RouteTask {
 	return &RouteTask{
-		router:  router,
-		decoder: decoder,
+		registry: registry,
 	}
 }
 
+// Run 요청의 host와 port로 서비스를 식별하고 매칭된 라우트 정책을 상태에 기록합니다.
 func (t *RouteTask) Run(ctx context.Context, state *State) error {
-	routeInfos, err := t.router.Route(state.Request.Service)
-	if err != nil {
-		return err
+	// 라우트 정책 저장소가 없으면 요청을 분류할 수 없으므로 즉시 실패합니다.
+	if t.registry == nil {
+		return fmt.Errorf("%w: route registry is required", ErrInvalidRequest)
 	}
 
+	// nginx가 전달한 host와 port로 서비스 이름을 식별합니다.
+	service, err := t.registry.ServiceFor(state.Request.Host, state.Request.Port)
+	if err != nil {
+		return fmt.Errorf("find service: %w", err)
+	}
+	state.Request.Service = service
+
+	// 식별된 서비스에 등록된 엔드포인트 정책 목록을 조회합니다.
+	routeInfos, err := t.registry.RouteInfos(service)
+	if err != nil {
+		return fmt.Errorf("route infos: %w", err)
+	}
+
+	// 요청 method와 path에 맞는 정책을 찾아 이후 task가 사용할 수 있도록 상태에 저장합니다.
 	for _, routeInfo := range routeInfos {
-		// 요청과 동일한 엔트포인트 조건인지 확인힙나다.
-		if checkAuthRoute(routeInfo, state.Request.Method, state.Request.Path) {
-			if strings.TrimSpace(state.Request.AuthorizationHeader) == "" {
-				return fmt.Errorf("authorization header is required: %w", internalauth.ErrInvalidAuthorizationHeader)
-			}
-
-			token, err := internalauth.BearerToken(state.Request.AuthorizationHeader)
-			if err != nil {
-				return fmt.Errorf("extract bearer token: %w", err)
-			}
-
-			claims, err := t.decoder.Decode(token)
-			if err != nil {
-				return fmt.Errorf("decode bearer token: %w", err)
-			}
-			state.Claims = &claims
-
-			// 적절한 권한을 지고 있는지 확인합니다.
-			if !checkRole(routeInfo, state.Claims.Roles) {
-				return fmt.Errorf(
-					"%w: service %q does not allow %s %s",
-					ErrInvalidRequest,
-					state.Request.Service,
-					state.Request.Method,
-					state.Request.Path,
-				)
-			}
-
+		if matchRoute(routeInfo, state.Request.Method, state.Request.Path) {
+			matchedRoute := routeInfo
+			state.Route = &matchedRoute
 			return nil
 		}
 	}
@@ -65,27 +52,17 @@ func (t *RouteTask) Run(ctx context.Context, state *State) error {
 	return nil
 }
 
-func checkAuthRoute(routeInfo internalconfig.RouteInfo, method, path string) bool {
-	if routeInfo.HttpMethod != method || routeInfo.Path != path {
+func matchRoute(routeInfo internalconfig.RouteInfo, method, path string) bool {
+	if routeInfo.HttpMethod != "ALL" && routeInfo.HttpMethod != method {
 		return false
 	}
 
-	return true
-}
-
-// checkRole 엔트포인트 통과에 필요한 권한이 현재 claim에 존재하는지 확인합니다.
-func checkRole(routeInfo internalconfig.RouteInfo, roles []string) bool {
-	// 권한이 필요없으므로 true로 반환합니다.
-	if len(routeInfo.Roles) == 0 {
-		return true
+	routePath := strings.TrimSpace(routeInfo.Path)
+	if strings.HasSuffix(routePath, "/**") {
+		return strings.HasPrefix(path, strings.TrimSuffix(routePath, "/**"))
 	}
-
-	for _, role := range roles {
-		for _, allowedRole := range routeInfo.Roles {
-			if role == allowedRole {
-				return true
-			}
-		}
+	if routePath == path {
+		return true
 	}
 
 	return false

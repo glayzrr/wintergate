@@ -25,15 +25,18 @@ func NewAuthenticateTask(decoder TokenDecoder) *AuthenticateTask {
 
 // Run Authorization 헤더가 있을 때 Bearer JWT를 검증하고 claims를 상태에 기록합니다.
 func (t *AuthenticateTask) Run(_ context.Context, state *State) error {
+	// 인증이 필요 없는 라우트도 있으므로 Authorization 헤더가 없으면 검증을 건너뜁니다.
 	if strings.TrimSpace(state.Request.AuthorizationHeader) == "" {
 		return nil
 	}
 
+	// Authorization 헤더에서 Bearer 토큰 값만 분리합니다.
 	token, err := internalauth.BearerToken(state.Request.AuthorizationHeader)
 	if err != nil {
 		return fmt.Errorf("extract bearer token: %w", err)
 	}
 
+	// 토큰 서명과 claims를 검증하고 이후 task에서 사용할 수 있도록 저장합니다.
 	claims, err := t.decoder.Decode(token)
 	if err != nil {
 		return fmt.Errorf("decode bearer token: %w", err)

@@ -199,7 +199,7 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 	gin.SetMode(gin.TestMode)
 
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -239,7 +239,7 @@ func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.
 	gin.SetMode(gin.TestMode)
 
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,

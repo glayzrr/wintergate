@@ -102,7 +102,7 @@ func TestDecodeReturnsErrorWhenConfigUnavailable(t *testing.T) {
 
 func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -159,7 +159,7 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 
 func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -215,7 +215,7 @@ func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
 func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 	privateKey := generatePrivateKey(t)
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "RS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -255,7 +255,7 @@ func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 
 func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -294,7 +294,7 @@ func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 
 func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Second,
@@ -333,7 +333,7 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 
 func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -368,7 +368,7 @@ func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
 
 func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -403,7 +403,7 @@ func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
 
 func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Second,
@@ -439,7 +439,7 @@ func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
 
 func TestDecodeReturnsErrorWhenAlgorithmMismatch(t *testing.T) {
 	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.RuntimeConfig{
+	err := registry.Register(authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -524,7 +524,7 @@ func TestValidateClaimsReturnsErrorWhenIssuedAtInFuture(t *testing.T) {
 		return currentTime
 	}
 
-	err := decoder.validateClaims(authconfig.RuntimeConfig{
+	err := decoder.validateClaims(authconfig.Config{
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Second,
 		JWTIssuer:    "auth-service",

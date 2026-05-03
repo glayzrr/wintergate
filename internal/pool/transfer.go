@@ -10,7 +10,7 @@ import (
 
 // NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
 func NewTransport(tier Tier) (*http.Transport, error) {
-	config, err := GetConfig(tier)
+	config, err := ConfigFor(tier)
 	if err != nil {
 		return nil, err
 	}
@@ -42,14 +42,14 @@ func HandleRequest(serviceName, host string, w http.ResponseWriter, r *http.Requ
 	doneFunc := StartRecord(serviceName)
 	defer doneFunc()
 
-	status, err := GetStatus(serviceName)
+	status, err := StatusFor(serviceName)
 	if err != nil {
 		return err
 	}
 
 	// 현재 트래픽 상태를 기준으로 사용할 풀 티어와 전용 풀 여부를 결정합니다.
 	decision := DecidePolicy(status)
-	cachedClient, err := defaultClients.GetClient(decision)
+	cachedClient, err := defaultClients.ClientFor(decision)
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,9 @@
 package configapi
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	responseapi "wintergate/api/response"
@@ -34,7 +36,7 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 // EnrollConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
 func (h *Handler) EnrollConfig(ctx *gin.Context) {
 	var settings internalconfig.Settings
-	if err := ctx.ShouldBindJSON(&settings); err != nil {
+	if err := decodeSettings(ctx.Request.Body, &settings); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
 			Success: false,
 			Message: responseBindFailed,
@@ -54,4 +56,22 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		Success: true,
 		Message: responseRegisterSuccess,
 	})
+}
+
+func decodeSettings(body io.Reader, settings *internalconfig.Settings) error {
+	decoder := json.NewDecoder(body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(settings); err != nil {
+		return fmt.Errorf("decode settings: %w", err)
+	}
+
+	var extra struct{}
+	if err := decoder.Decode(&extra); err == nil {
+		return fmt.Errorf("decode settings trailing data")
+	} else if err != io.EOF {
+		return fmt.Errorf("decode settings trailing data: %w", err)
+	}
+
+	return nil
 }

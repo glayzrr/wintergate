@@ -48,7 +48,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`}},"routes":[{"name":"order-service","host":"localhost","port":8080,"threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 
@@ -84,6 +84,42 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 
 	if authRuntimeConfig.JWTIssuer != "auth-service" {
 		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
+	}
+}
+
+func TestHandlerEnrollConfigReturnsBadRequestWhenUnknownFieldExists(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	registerer := internalconfig.NewRegisterer()
+	handler, err := NewHandler(registerer)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		ConfigRoute,
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"route":[{"name":"order-service","host":"localhost","port":8080,"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN"]}]}]}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+
+	if response.Message != responseBindFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseBindFailed)
 	}
 }
 
@@ -134,7 +170,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigRoute,
-		strings.NewReader(`{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":{"keys":[{"kid":"key-1","kty":"RSA","alg":"RS256","use":"sig","n":"AQAB","e":"AQAB"}]}},"routes":{"protected":[{"path":"/api/order","method":"POST","service":"order-service","roles":["ADMIN","OPS"],"time_window":{"start":"09:00","end":"18:00","timezone":"Asia/Seoul"}}]},"rate_limit":[{"path":"/api/order","method":"POST","service":"order-service","roles":["anyone"],"duration":"1m","limit":10}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service"}},"routes":[{"name":"order-service","host":"localhost","port":8080,"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 

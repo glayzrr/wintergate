@@ -8,7 +8,7 @@ import (
 func TestRegistryRegisterStoresRuntimeConfigAndEntries(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", Service: "order-service", HttpMethod: "get", Roles: []string{"ADMIN"}},
 			{Path: "/orders/history", Service: "order-service", HttpMethod: "GET", Roles: []string{"OPS"}},
@@ -19,9 +19,9 @@ func TestRegistryRegisterStoresRuntimeConfigAndEntries(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	routeInfos, found := registry.RouteInfos("order-service")
-	if !found {
-		t.Fatal("RouteInfos did not find order-service")
+	routeInfos, err := registry.RouteInfos("order-service")
+	if err != nil {
+		t.Fatalf("RouteInfos returned error: %v", err)
 	}
 
 	if len(routeInfos) != 2 {
@@ -44,7 +44,7 @@ func TestRegistryRegisterStoresRuntimeConfigAndEntries(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenServiceRouteDuplicated(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
 			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
@@ -62,7 +62,7 @@ func TestRegistryRegisterReturnsErrorWhenServiceRouteDuplicated(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenHTTPMethodMissing(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", Service: "order-service"},
 		},
@@ -79,7 +79,7 @@ func TestRegistryRegisterReturnsErrorWhenHTTPMethodMissing(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenEntriesMissing(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{})
+	err := registry.Register(Config{})
 	if err == nil {
 		t.Fatal("Register returned nil error")
 	}
@@ -92,7 +92,7 @@ func TestRegistryRegisterReturnsErrorWhenEntriesMissing(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenPathMissing(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		Entries: []Entry{
 			{Service: "order-service", HttpMethod: "GET"},
 		},
@@ -109,7 +109,7 @@ func TestRegistryRegisterReturnsErrorWhenPathMissing(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenServiceMissing(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", HttpMethod: "GET"},
 		},
@@ -126,7 +126,7 @@ func TestRegistryRegisterReturnsErrorWhenServiceMissing(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenRoleEmpty(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", Service: "order-service", HttpMethod: "GET", Roles: []string{"ADMIN", " "}},
 		},
@@ -140,9 +140,9 @@ func TestRegistryRegisterReturnsErrorWhenRoleEmpty(t *testing.T) {
 	}
 }
 
-func TestRegistryRouteInfosReturnsFalseWhenServiceBlankOrMissing(t *testing.T) {
+func TestRegistryRouteInfosReturnsErrorWhenServiceBlankOrMissing(t *testing.T) {
 	registry := NewRegistry()
-	if err := registry.Register(RuntimeConfig{
+	if err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", Service: "order-service", HttpMethod: "GET"},
 		},
@@ -150,18 +150,22 @@ func TestRegistryRouteInfosReturnsFalseWhenServiceBlankOrMissing(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	if _, found := registry.RouteInfos(""); found {
-		t.Fatal("RouteInfos found blank service unexpectedly")
+	if _, err := registry.RouteInfos(""); err == nil {
+		t.Fatal("RouteInfos returned nil error for blank service")
+	} else if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 
-	if _, found := registry.RouteInfos("missing-service"); found {
-		t.Fatal("RouteInfos found missing service unexpectedly")
+	if _, err := registry.RouteInfos("missing-service"); err == nil {
+		t.Fatal("RouteInfos returned nil error for missing service")
+	} else if !errors.Is(err, ErrServiceNotFound) {
+		t.Fatalf("error = %v, want ErrServiceNotFound", err)
 	}
 }
 
 func TestRegistryRouteInfosReturnsCopiedRoles(t *testing.T) {
 	registry := NewRegistry()
-	if err := registry.Register(RuntimeConfig{
+	if err := registry.Register(Config{
 		Entries: []Entry{
 			{Path: "/orders", Service: "order-service", HttpMethod: "GET", Roles: []string{"ADMIN"}},
 		},
@@ -169,16 +173,16 @@ func TestRegistryRouteInfosReturnsCopiedRoles(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	routeInfos, found := registry.RouteInfos("order-service")
-	if !found {
-		t.Fatal("RouteInfos did not find order-service")
+	routeInfos, err := registry.RouteInfos("order-service")
+	if err != nil {
+		t.Fatalf("RouteInfos returned error: %v", err)
 	}
 
 	routeInfos[0].Roles[0] = "OPS"
 
-	routeInfos, found = registry.RouteInfos("order-service")
-	if !found {
-		t.Fatal("RouteInfos did not find order-service")
+	routeInfos, err = registry.RouteInfos("order-service")
+	if err != nil {
+		t.Fatalf("RouteInfos returned error: %v", err)
 	}
 
 	if routeInfos[0].Roles[0] != "ADMIN" {

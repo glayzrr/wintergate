@@ -2,7 +2,6 @@ package pool
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 )
 
@@ -14,10 +13,9 @@ type Threshold struct {
 
 // Policy 서비스별 트래픽 분류 정책입니다.
 type Policy struct {
-	Service       string
-	Hot           Threshold
-	Super         Threshold
-	DedicatedFrom Tier
+	Service string
+	Hot     Threshold
+	Super   Threshold
 }
 
 // Decision 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
@@ -107,7 +105,7 @@ func (r *PolicyRegistry) Policy(service string) (Policy, bool) {
 	return policy, found
 }
 
-// Decide 등록 정책이 있으면 RPS/in-flight 기준으로 tier와 전용 풀 여부를 결정합니다.
+// Decide 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
 func (r *PolicyRegistry) Decide(status Status) Decision {
 	normalizedService := normalizeService(status.Service)
 
@@ -128,7 +126,6 @@ func (r *PolicyRegistry) Decide(status Status) Decision {
 
 	decision.Registered = true
 	decision.Tier = decideTier(status, policy)
-	decision.Dedicated = isDedicatedTier(decision.Tier, policy.DedicatedFrom)
 
 	return decision
 }
@@ -139,11 +136,6 @@ func normalizePolicy(policy Policy) (Policy, error) {
 		return Policy{}, fmt.Errorf("%w: service is required", ErrInvalidPolicy)
 	}
 
-	normalizedDedicatedFrom, err := normalizeDedicatedFrom(policy.DedicatedFrom)
-	if err != nil {
-		return Policy{}, err
-	}
-
 	if err := validateThreshold(policy.Hot, "hot"); err != nil {
 		return Policy{}, err
 	}
@@ -152,7 +144,6 @@ func normalizePolicy(policy Policy) (Policy, error) {
 	}
 
 	policy.Service = service
-	policy.DedicatedFrom = normalizedDedicatedFrom
 
 	return policy, nil
 }
@@ -166,20 +157,6 @@ func validateThreshold(threshold Threshold, name string) error {
 	}
 
 	return nil
-}
-
-func normalizeDedicatedFrom(tier Tier) (Tier, error) {
-	trimmedTier := strings.ToLower(strings.TrimSpace(string(tier)))
-	if trimmedTier == "" {
-		return "", nil
-	}
-
-	switch Tier(trimmedTier) {
-	case TierNormal, TierHot, TierSuper:
-		return Tier(trimmedTier), nil
-	default:
-		return "", fmt.Errorf("%w: unsupported dedicated_from tier %q", ErrInvalidPolicy, tier)
-	}
 }
 
 func decideTier(status Status, policy Policy) Tier {
@@ -202,17 +179,4 @@ func thresholdReached(status Status, threshold Threshold) bool {
 	}
 
 	return false
-}
-
-func isDedicatedTier(tier Tier, dedicatedFrom Tier) bool {
-	switch dedicatedFrom {
-	case TierNormal:
-		return tier == TierNormal || tier == TierHot || tier == TierSuper
-	case TierHot:
-		return tier == TierHot || tier == TierSuper
-	case TierSuper:
-		return tier == TierSuper
-	default:
-		return false
-	}
 }

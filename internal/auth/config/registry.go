@@ -10,15 +10,15 @@ import (
 
 // Registry 인증 런타임 설정과 JWKS를 메모리에 보관합니다.
 type Registry struct {
-	mu         sync.RWMutex
-	algorithm  string
-	audience   string
-	clockSkew  time.Duration
-	issuer     string
-	secret     []byte
-	jwks       []byte
-	keys       map[string]*rsa.PublicKey
-	set        bool
+	mu        sync.RWMutex
+	algorithm string
+	audience  string
+	clockSkew time.Duration
+	issuer    string
+	secret    []byte
+	jwks      []byte
+	keys      map[string]*rsa.PublicKey
+	set       bool
 }
 
 // NewRegistry 빈 인증 설정 Registry를 생성합니다.
@@ -29,7 +29,7 @@ func NewRegistry() *Registry {
 }
 
 // Register 전달받은 인증 런타임 설정과 JWKS로 현재 값을 교체합니다.
-func (r *Registry) Register(cfg RuntimeConfig) error {
+func (r *Registry) Register(cfg Config) error {
 	if strings.TrimSpace(cfg.JWTAlgorithm) == "" {
 		return fmt.Errorf("%w: jwt_algorithm is required", ErrInvalidConfig)
 	}
@@ -92,15 +92,15 @@ func (r *Registry) Register(cfg RuntimeConfig) error {
 }
 
 // Snapshot 현재 인증 런타임 설정의 사본을 반환합니다.
-func (r *Registry) Snapshot() (RuntimeConfig, bool) {
+func (r *Registry) Snapshot() (Config, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if !r.set {
-		return RuntimeConfig{}, false
+		return Config{}, false
 	}
 
-	cfg := RuntimeConfig{
+	cfg := Config{
 		JWTAlgorithm: r.algorithm,
 		JWTAudience:  r.audience,
 		JWTClockSkew: r.clockSkew,

@@ -173,7 +173,7 @@ func decodeClaims(payload []byte) (decodedClaims, error) {
 	}, nil
 }
 
-func (d *Decoder) verifySignature(_ context.Context, cfg authconfig.RuntimeConfig, header tokenHeader, signingInput string, signature []byte) error {
+func (d *Decoder) verifySignature(_ context.Context, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
 	if header.Algorithm != cfg.JWTAlgorithm {
 		return fmt.Errorf("%w: expected %q, got %q", ErrUnsupportedAlgorithm, cfg.JWTAlgorithm, header.Algorithm)
 	}
@@ -216,7 +216,7 @@ func verifyRS256Signature(publicKey *rsa.PublicKey, signingInput string, signatu
 	return nil
 }
 
-func (d *Decoder) validateClaims(cfg authconfig.RuntimeConfig, claims decodedClaims) error {
+func (d *Decoder) validateClaims(cfg authconfig.Config, claims decodedClaims) error {
 	if strings.TrimSpace(claims.Issuer) == "" {
 		return fmt.Errorf("%w: iss is required", ErrInvalidIssuer)
 	}

@@ -9,7 +9,6 @@ import (
 	internalauth "wintergate/internal/auth"
 	internalconfig "wintergate/internal/config"
 	internalgateway "wintergate/internal/gateway"
-	internalroute "wintergate/internal/route"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,12 +42,19 @@ func newRouter() (*gin.Engine, error) {
 		return nil, fmt.Errorf("create config handler: %w", err)
 	}
 
-	routeTask := internalgateway.NewRouteTask(
-		internalroute.NewRouter(registerer.RouteRegistry()),
-		internalauth.NewDecoder(registerer.AuthRegistry()),
+	routerTask := internalgateway.NewRouteTask(
+		registerer.RouteRegistry(),
 	)
+	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registerer.AuthRegistry()))
+	authorizeTask := internalgateway.NewAuthorizeTask()
+	transferTask := internalgateway.NewTransferTask()
 
-	gatewayHandler := gatewayapi.NewHandler(internalgateway.NewOrchestrator(routeTask))
+	gatewayHandler := gatewayapi.NewHandler(internalgateway.NewOrchestrator(
+		routerTask,
+		authenticateTask,
+		authorizeTask,
+		transferTask,
+	))
 
 	router := gin.New()
 	router.Use(gin.Recovery())

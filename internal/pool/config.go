@@ -51,8 +51,8 @@ var defaultConfigs = map[Tier]Config{
 	},
 }
 
-// GetConfig 지정한 티어의 풀 설정을 반환합니다.
-func GetConfig(tier Tier) (Config, error) {
+// ConfigFor 지정한 티어의 풀 설정을 반환합니다.
+func ConfigFor(tier Tier) (Config, error) {
 	normalizedTier, err := normalizeTier(tier)
 	if err != nil {
 		return Config{}, err

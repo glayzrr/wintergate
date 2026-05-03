@@ -6,9 +6,9 @@ import (
 )
 
 func TestConfigForTierReturnsNormalWhenTierBlank(t *testing.T) {
-	config, err := GetConfig("")
+	config, err := ConfigFor("")
 	if err != nil {
-		t.Fatalf("ConfigForTier returned error: %v", err)
+		t.Fatalf("ConfigFor returned error: %v", err)
 	}
 
 	if config.Tier != TierNormal {
@@ -52,9 +52,9 @@ func TestConfigForTierReturnsTierConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, err := GetConfig(tt.tier)
+			config, err := ConfigFor(tt.tier)
 			if err != nil {
-				t.Fatalf("ConfigForTier returned error: %v", err)
+				t.Fatalf("ConfigFor returned error: %v", err)
 			}
 
 			if config.Tier != tt.tier {
@@ -74,9 +74,9 @@ func TestConfigForTierReturnsTierConfig(t *testing.T) {
 }
 
 func TestConfigForTierNormalizesTier(t *testing.T) {
-	config, err := GetConfig(" HOT ")
+	config, err := ConfigFor(" HOT ")
 	if err != nil {
-		t.Fatalf("ConfigForTier returned error: %v", err)
+		t.Fatalf("ConfigFor returned error: %v", err)
 	}
 
 	if config.Tier != TierHot {
@@ -85,9 +85,9 @@ func TestConfigForTierNormalizesTier(t *testing.T) {
 }
 
 func TestConfigForTierReturnsErrorWhenTierUnsupported(t *testing.T) {
-	_, err := GetConfig("burst")
+	_, err := ConfigFor("burst")
 	if err == nil {
-		t.Fatal("ConfigForTier returned nil error")
+		t.Fatal("ConfigFor returned nil error")
 	}
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)

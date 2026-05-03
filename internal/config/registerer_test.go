@@ -65,9 +65,9 @@ func TestRegisterStoresAuthConfigWhenSettingsValid(t *testing.T) {
 		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
 	}
 
-	routeInfos, found := registerer.routeRegistry.RouteInfos("order-service")
-	if !found {
-		t.Fatal("RouteInfos did not return registered route info")
+	routeInfos, err := registerer.routeRegistry.RouteInfos("order-service")
+	if err != nil {
+		t.Fatalf("RouteInfos returned error: %v", err)
 	}
 
 	if len(routeInfos) != 1 {
@@ -238,7 +238,7 @@ func TestRegisterReturnsErrorWhenRouteRegistryRejectsSettings(t *testing.T) {
 func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
 	registerer := NewRegisterer()
 
-	cfg := registerer.routeRuntimeConfig(&RouteSettings{
+	cfg := registerer.registerRouteConfig(&RouteSettings{
 		Protected: []ProtectedRoute{
 			{
 				Route: Route{
@@ -261,7 +261,7 @@ func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
 
 	cfg.Entries[0].Roles[0] = "GUEST"
 
-	cfg = registerer.routeRuntimeConfig(&RouteSettings{
+	cfg = registerer.registerRouteConfig(&RouteSettings{
 		Protected: []ProtectedRoute{
 			{
 				Route: Route{

@@ -47,7 +47,7 @@ func TestRegistryRegisterStoresKeysAndConfig(t *testing.T) {
 	registry := NewRegistry()
 	jwksDocument := mustMarshalDocument(t, newRSAKey("key-1", &privateKey.PublicKey))
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		JWTAlgorithm: supportedJWTAlgorithm,
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -102,7 +102,7 @@ func TestRegistryRegisterReplacesExistingKeys(t *testing.T) {
 	secondPrivateKey := generateRSAKey(t)
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		JWTAlgorithm: supportedJWTAlgorithm,
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -113,7 +113,7 @@ func TestRegistryRegisterReplacesExistingKeys(t *testing.T) {
 		t.Fatalf("first Register returned error: %v", err)
 	}
 
-	err = registry.Register(RuntimeConfig{
+	err = registry.Register(Config{
 		JWTAlgorithm: supportedJWTAlgorithm,
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -146,7 +146,7 @@ func TestRegistryRegisterReplacesExistingKeys(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenPayloadInvalid(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		JWTAlgorithm: supportedJWTAlgorithm,
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -165,7 +165,7 @@ func TestRegistryRegisterReturnsErrorWhenPayloadInvalid(t *testing.T) {
 func TestRegistryRegisterStoresSecretForHS256(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		JWTAlgorithm: supportedHMACJWTAlgorithm,
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -193,7 +193,7 @@ func TestRegistryRegisterStoresSecretForHS256(t *testing.T) {
 func TestRegistryRegisterReturnsErrorWhenAlgorithmUnsupported(t *testing.T) {
 	registry := NewRegistry()
 
-	err := registry.Register(RuntimeConfig{
+	err := registry.Register(Config{
 		JWTAlgorithm: "ES256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,

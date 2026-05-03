@@ -42,10 +42,13 @@ func (h *Handler) Receive(ctx *gin.Context) {
 	}
 
 	err := h.orchestrator.Receive(ctx.Request.Context(), internalgateway.Request{
-		Service:             ctx.GetHeader(requestHeaderService),
+		Host:                ctx.GetHeader(requestHeaderHost),
+		Port:                ctx.GetHeader(requestHeaderPort),
 		Method:              ctx.Request.Method,
 		Path:                requestPath,
 		AuthorizationHeader: ctx.GetHeader("Authorization"),
+		ResponseWriter:      ctx.Writer,
+		HTTPRequest:         ctx.Request,
 	})
 	if err != nil {
 		statusCode, message := receiveFailure(err)
@@ -53,6 +56,10 @@ func (h *Handler) Receive(ctx *gin.Context) {
 			Success: false,
 			Message: message,
 		})
+		return
+	}
+
+	if ctx.Writer.Written() {
 		return
 	}
 

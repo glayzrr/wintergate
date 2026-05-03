@@ -2,8 +2,8 @@ package config
 
 import "time"
 
-// RuntimeConfig 인증 런타임 설정과 JWKS 값을 보관합니다.
-type RuntimeConfig struct {
+// Config 인증 런타임 설정과 JWKS 값을 보관합니다.
+type Config struct {
 	JWTAlgorithm string
 	JWTAudience  string
 	JWTClockSkew time.Duration

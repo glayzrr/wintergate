@@ -1,5 +1,12 @@
 package config
 
+// Service 하나의 업스트림 서비스 식별 정보를 표현합니다.
+type Service struct {
+	Name string
+	Host string
+	Port int
+}
+
 // Entry 하나의 URL 경로와 대상 서비스 매핑을 표현합니다.
 type Entry struct {
 	Path       string
@@ -8,9 +15,10 @@ type Entry struct {
 	Roles      []string
 }
 
-// RuntimeConfig 라우팅 런타임 설정과 엔트리를 함께 보관합니다.
-type RuntimeConfig struct {
-	Entries []Entry
+// Config 라우팅 런타임 설정과 엔트리를 함께 보관합니다.
+type Config struct {
+	Services []Service
+	Entries  []Entry
 }
 
 // RegistryRouteInfo 하나의 서비스에 속한 라우팅 정보를 표현합니다.
