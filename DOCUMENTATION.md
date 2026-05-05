@@ -469,7 +469,7 @@ import "wintergate/internal/gateway"
 - [type Task](<#Task>)
 - [type TokenDecoder](<#TokenDecoder>)
 - [type TransferTask](<#TransferTask>)
-  - [func NewTransferTask\(\) \*TransferTask](<#NewTransferTask>)
+  - [func NewTransferTask\(recorder \*metricrecord.Recorder\) \*TransferTask](<#NewTransferTask>)
   - [func \(t \*TransferTask\) Run\(\_ context.Context, state \*State\) error](<#TransferTask.Run>)
 
 
@@ -660,14 +660,16 @@ type TokenDecoder interface {
 TransferTask 인증과 인가를 통과한 요청을 업스트림 서비스로 전달합니다.
 
 ```go
-type TransferTask struct{}
+type TransferTask struct {
+    // contains filtered or unexported fields
+}
 ```
 
 <a name="NewTransferTask"></a>
 ### func NewTransferTask
 
 ```go
-func NewTransferTask() *TransferTask
+func NewTransferTask(recorder *metricrecord.Recorder) *TransferTask
 ```
 
 NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
@@ -681,6 +683,98 @@ func (t *TransferTask) Run(_ context.Context, state *State) error
 
 Run 현재 요청을 service host와 port로 전달하고 업스트림 응답을 클라이언트에 기록합니다.
 
+# metric
+
+```go
+import "wintergate/internal/metric"
+```
+
+## Index
+
+- [Constants](<#constants>)
+- [Variables](<#variables>)
+- [func BuildRequestObserver\(recorder \*metricrecord.Recorder\) \(gin.HandlerFunc, error\)](<#BuildRequestObserver>)
+- [func NewRegistry\(\) \*prometheus.Registry](<#NewRegistry>)
+- [type Handler](<#Handler>)
+  - [func NewHandler\(gatherer prometheus.Gatherer\) \*Handler](<#NewHandler>)
+  - [func \(h \*Handler\) RegisterRoutes\(router gin.IRouter\)](<#Handler.RegisterRoutes>)
+  - [func \(h \*Handler\) Serve\(ctx \*gin.Context\)](<#Handler.Serve>)
+
+
+## Constants
+
+<a name="Route"></a>
+
+```go
+const (
+    Route = "/metric"
+)
+```
+
+## Variables
+
+<a name="ErrNilRecorder"></a>
+
+```go
+var ErrNilRecorder = errors.New("nil metric recorder")
+```
+
+<a name="BuildRequestObserver"></a>
+## func BuildRequestObserver
+
+```go
+func BuildRequestObserver(recorder *metricrecord.Recorder) (gin.HandlerFunc, error)
+```
+
+BuildRequestObserver HTTP 요청 메트릭을 기록하는 Gin observer를 생성합니다.
+
+<a name="NewRegistry"></a>
+## func NewRegistry
+
+```go
+func NewRegistry() *prometheus.Registry
+```
+
+NewRegistry Prometheus 레지스트리를 생성합니다.
+
+<a name="Handler"></a>
+## type Handler
+
+Handler Prometheus 메트릭 엔드포인트를 담당합니다.
+
+```go
+type Handler struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewHandler"></a>
+### func NewHandler
+
+```go
+func NewHandler(gatherer prometheus.Gatherer) *Handler
+```
+
+NewHandler Prometheus 메트릭 Handler를 생성합니다.
+
+<a name="Handler.RegisterRoutes"></a>
+### func \(\*Handler\) RegisterRoutes
+
+```go
+func (h *Handler) RegisterRoutes(router gin.IRouter)
+```
+
+RegisterRoutes Prometheus 메트릭 엔드포인트를 Gin 라우터에 등록합니다.
+
+<a name="Handler.Serve"></a>
+### func \(\*Handler\) Serve
+
+```go
+func (h *Handler) Serve(ctx *gin.Context)
+```
+
+Serve Prometheus 메트릭 응답을 작성합니다.
+
 # pool
 
 ```go
@@ -690,7 +784,7 @@ import "wintergate/internal/pool"
 ## Index
 
 - [Variables](<#variables>)
-- [func HandleRequest\(serviceName, address string, w http.ResponseWriter, r \*http.Request\) error](<#HandleRequest>)
+- [func HandleRequest\(serviceName, address string, w http.ResponseWriter, r \*http.Request, recorder \*metricrecord.Recorder\) error](<#HandleRequest>)
 - [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
 - [func RegisterPolicies\(policies \[\]Policy\) error](<#RegisterPolicies>)
 - [type Config](<#Config>)
@@ -704,13 +798,13 @@ import "wintergate/internal/pool"
   - [func DefaultPolicyRegistry\(\) \*PolicyRegistry](<#DefaultPolicyRegistry>)
   - [func NewPolicyRegistry\(\) \*PolicyRegistry](<#NewPolicyRegistry>)
   - [func \(r \*PolicyRegistry\) Decide\(status Status\) Decision](<#PolicyRegistry.Decide>)
-  - [func \(r \*PolicyRegistry\) Policy\(service string\) \(Policy, bool\)](<#PolicyRegistry.Policy>)
+  - [func \(r \*PolicyRegistry\) PolicyFor\(service string\) \(Policy, bool\)](<#PolicyRegistry.PolicyFor>)
   - [func \(r \*PolicyRegistry\) Register\(policies \[\]Policy\) error](<#PolicyRegistry.Register>)
 - [type Recorder](<#Recorder>)
   - [func DefaultRecorder\(\) \*Recorder](<#DefaultRecorder>)
   - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
   - [func \(r \*Recorder\) Start\(service string\) DoneFunc](<#Recorder.Start>)
-  - [func \(r \*Recorder\) Status\(service string\) \(Status, error\)](<#Recorder.Status>)
+  - [func \(r \*Recorder\) StatusFor\(service string\) \(Status, error\)](<#Recorder.StatusFor>)
 - [type Status](<#Status>)
   - [func StatusFor\(service string\) \(Status, error\)](<#StatusFor>)
 - [type Threshold](<#Threshold>)
@@ -734,7 +828,7 @@ var (
 ## func HandleRequest
 
 ```go
-func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request) error
+func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request, recorder *metricrecord.Recorder) error
 ```
 
 HandleRequest 서비스 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
@@ -791,10 +885,9 @@ Decision 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 
 
 ```go
 type Decision struct {
-    Service    string
-    Registered bool
-    Tier       Tier
-    Dedicated  bool
+    Service   string
+    Tier      Tier
+    Dedicated bool
 }
 ```
 
@@ -876,14 +969,14 @@ func (r *PolicyRegistry) Decide(status Status) Decision
 
 Decide 등록 정책이 있으면 RPS/in\-flight 기준으로 tier를 결정합니다.
 
-<a name="PolicyRegistry.Policy"></a>
-### func \(\*PolicyRegistry\) Policy
+<a name="PolicyRegistry.PolicyFor"></a>
+### func \(\*PolicyRegistry\) PolicyFor
 
 ```go
-func (r *PolicyRegistry) Policy(service string) (Policy, bool)
+func (r *PolicyRegistry) PolicyFor(service string) (Policy, bool)
 ```
 
-Policy 서비스별 등록 정책의 사본을 반환합니다.
+PolicyFor 서비스별 등록 정책의 사본을 반환합니다.
 
 <a name="PolicyRegistry.Register"></a>
 ### func \(\*PolicyRegistry\) Register
@@ -932,14 +1025,14 @@ func (r *Recorder) Start(service string) DoneFunc
 
 Start 서비스 요청 시작을 기록하고 완료 함수를 반환합니다.
 
-<a name="Recorder.Status"></a>
-### func \(\*Recorder\) Status
+<a name="Recorder.StatusFor"></a>
+### func \(\*Recorder\) StatusFor
 
 ```go
-func (r *Recorder) Status(service string) (Status, error)
+func (r *Recorder) StatusFor(service string) (Status, error)
 ```
 
-Status 서비스 트래픽 상태의 현재 값을 반환합니다.
+StatusFor 서비스 트래픽 상태의 현재 값을 반환합니다.
 
 <a name="Status"></a>
 ## type Status
@@ -1002,16 +1095,6 @@ const (
     TierSuper Tier = "super"
 )
 ```
-
-# route
-
-```go
-import "wintergate/internal/route"
-```
-
-## Index
-
-
 
 # config
 
@@ -1106,6 +1189,166 @@ func (r *Registry) Snapshot() (Config, bool)
 ```
 
 Snapshot 현재 인증 런타임 설정의 사본을 반환합니다.
+
+# record
+
+```go
+import "wintergate/internal/metric/record"
+```
+
+## Index
+
+- [type ConnectionObservation](<#ConnectionObservation>)
+- [type PoolDoneFunc](<#PoolDoneFunc>)
+- [type PoolObservation](<#PoolObservation>)
+- [type PoolRecorder](<#PoolRecorder>)
+- [type PoolResult](<#PoolResult>)
+- [type Recorder](<#Recorder>)
+  - [func NewRecorder\(registry \*prometheus.Registry\) \*Recorder](<#NewRecorder>)
+  - [func \(r \*Recorder\) RecordConnection\(observation PoolObservation, connection ConnectionObservation\)](<#Recorder.RecordConnection>)
+  - [func \(r \*Recorder\) RecordHTTP\(\) RequestDoneFunc](<#Recorder.RecordHTTP>)
+  - [func \(r \*Recorder\) RecordPool\(observation PoolObservation\) PoolDoneFunc](<#Recorder.RecordPool>)
+- [type RequestDoneFunc](<#RequestDoneFunc>)
+- [type RequestObservation](<#RequestObservation>)
+- [type RequestRecorder](<#RequestRecorder>)
+
+
+<a name="ConnectionObservation"></a>
+## type ConnectionObservation
+
+ConnectionObservation 업스트림 커넥션 획득 결과입니다.
+
+```go
+type ConnectionObservation struct {
+    Reused       bool
+    WasIdle      bool
+    WaitDuration time.Duration
+}
+```
+
+<a name="PoolDoneFunc"></a>
+## type PoolDoneFunc
+
+PoolDoneFunc 커넥션 풀 사용 종료 시 메트릭을 기록합니다.
+
+```go
+type PoolDoneFunc func(PoolResult)
+```
+
+<a name="PoolObservation"></a>
+## type PoolObservation
+
+PoolObservation 커넥션 풀 사용 시작 정보입니다.
+
+```go
+type PoolObservation struct {
+    Service   string
+    Tier      string
+    Dedicated bool
+}
+```
+
+<a name="PoolRecorder"></a>
+## type PoolRecorder
+
+PoolRecorder 커넥션 풀과 업스트림 요청 메트릭을 기록합니다.
+
+```go
+type PoolRecorder struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="PoolResult"></a>
+## type PoolResult
+
+PoolResult 커넥션 풀을 사용한 업스트림 요청 결과입니다.
+
+```go
+type PoolResult struct {
+    StatusCode int
+}
+```
+
+<a name="Recorder"></a>
+## type Recorder
+
+Recorder HTTP와 pool 메트릭을 함께 기록합니다.
+
+```go
+type Recorder struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewRecorder"></a>
+### func NewRecorder
+
+```go
+func NewRecorder(registry *prometheus.Registry) *Recorder
+```
+
+NewRecorder Prometheus 레지스트리에 HTTP와 pool 메트릭 recorder를 등록합니다.
+
+<a name="Recorder.RecordConnection"></a>
+### func \(\*Recorder\) RecordConnection
+
+```go
+func (r *Recorder) RecordConnection(observation PoolObservation, connection ConnectionObservation)
+```
+
+RecordConnection 업스트림 커넥션 획득 결과를 기록합니다.
+
+<a name="Recorder.RecordHTTP"></a>
+### func \(\*Recorder\) RecordHTTP
+
+```go
+func (r *Recorder) RecordHTTP() RequestDoneFunc
+```
+
+RecordHTTP HTTP 요청 시작을 기록하고 종료 기록 함수를 반환합니다.
+
+<a name="Recorder.RecordPool"></a>
+### func \(\*Recorder\) RecordPool
+
+```go
+func (r *Recorder) RecordPool(observation PoolObservation) PoolDoneFunc
+```
+
+RecordPool 커넥션 풀 사용 시작을 기록하고 종료 기록 함수를 반환합니다.
+
+<a name="RequestDoneFunc"></a>
+## type RequestDoneFunc
+
+RequestDoneFunc HTTP 요청 종료 시 메트릭을 기록합니다.
+
+```go
+type RequestDoneFunc func(RequestObservation)
+```
+
+<a name="RequestObservation"></a>
+## type RequestObservation
+
+RequestObservation HTTP 요청 처리 결과입니다.
+
+```go
+type RequestObservation struct {
+    Method     string
+    Path       string
+    StatusCode int
+}
+```
+
+<a name="RequestRecorder"></a>
+## type RequestRecorder
+
+RequestRecorder HTTP 요청 메트릭을 기록합니다.
+
+```go
+type RequestRecorder struct {
+    // contains filtered or unexported fields
+}
+```
 
 # config
 
