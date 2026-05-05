@@ -14,9 +14,6 @@ func TestPolicyRegistryDecideReturnsNormalWhenPolicyMissing(t *testing.T) {
 		InFlight: 1000,
 	})
 
-	if decision.Registered {
-		t.Fatal("decision.Registered = true, want false")
-	}
 	if decision.Tier != TierNormal {
 		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierNormal)
 	}
@@ -25,7 +22,7 @@ func TestPolicyRegistryDecideReturnsNormalWhenPolicyMissing(t *testing.T) {
 	}
 }
 
-func TestPolicyRegistryDecideReturnsHotWhenRegisteredHotThresholdReached(t *testing.T) {
+func TestPolicyRegistryDecideReturnsDedicatedHotWhenThresholdReached(t *testing.T) {
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
@@ -43,18 +40,15 @@ func TestPolicyRegistryDecideReturnsHotWhenRegisteredHotThresholdReached(t *test
 		InFlight: 10,
 	})
 
-	if !decision.Registered {
-		t.Fatal("decision.Registered = false, want true")
-	}
 	if decision.Tier != TierHot {
 		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierHot)
 	}
-	if decision.Dedicated {
-		t.Fatal("decision.Dedicated = true, want false")
+	if !decision.Dedicated {
+		t.Fatal("decision.Dedicated = false, want true")
 	}
 }
 
-func TestPolicyRegistryDecideReturnsSuperWhenRegisteredSuperThresholdReached(t *testing.T) {
+func TestPolicyRegistryDecideReturnsDedicatedSuperWhenThresholdReached(t *testing.T) {
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
@@ -75,12 +69,12 @@ func TestPolicyRegistryDecideReturnsSuperWhenRegisteredSuperThresholdReached(t *
 	if decision.Tier != TierSuper {
 		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierSuper)
 	}
-	if decision.Dedicated {
-		t.Fatal("decision.Dedicated = true, want false")
+	if !decision.Dedicated {
+		t.Fatal("decision.Dedicated = false, want true")
 	}
 }
 
-func TestPolicyRegistryDecideDoesNotDedicateWhenThresholdReached(t *testing.T) {
+func TestPolicyRegistryDecideUsesDedicatedPoolWhenPolicyConfigured(t *testing.T) {
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
@@ -100,8 +94,8 @@ func TestPolicyRegistryDecideDoesNotDedicateWhenThresholdReached(t *testing.T) {
 	if decision.Tier != TierSuper {
 		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierSuper)
 	}
-	if decision.Dedicated {
-		t.Fatal("decision.Dedicated = true, want false")
+	if !decision.Dedicated {
+		t.Fatal("decision.Dedicated = false, want true")
 	}
 }
 
@@ -125,10 +119,10 @@ func TestPolicyRegistryRegisterReplacesPolicies(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	if _, found := registry.Policy("order-service"); found {
+	if _, found := registry.PolicyFor("order-service"); found {
 		t.Fatal("Policy found replaced order-service")
 	}
-	if _, found := registry.Policy("payment-service"); !found {
+	if _, found := registry.PolicyFor("payment-service"); !found {
 		t.Fatal("Policy did not find payment-service")
 	}
 }

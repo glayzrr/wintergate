@@ -63,6 +63,7 @@ func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.R
 		return err
 	}
 
+	// 메트릭 수집을 위해 pool 상태를 기록합니다.
 	var donePool metricrecord.PoolDoneFunc
 	if recorder != nil {
 		donePool = recorder.RecordPool(metricrecord.PoolObservation{
@@ -84,6 +85,7 @@ func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.R
 		return err
 	}
 	defer resp.Body.Close()
+
 	if donePool != nil {
 		donePool(metricrecord.PoolResult{
 			StatusCode: resp.StatusCode,

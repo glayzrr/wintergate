@@ -123,19 +123,20 @@ func (r *Registerer) registerRouteConfig(routeSettings []RouteSettings) routecon
 func (r *Registerer) poolPolicies(serviceSettings []RouteSettings) []pool.Policy {
 	policies := make([]pool.Policy, 0, len(serviceSettings))
 	for _, service := range serviceSettings {
-		policy := pool.Policy{
-			Service: service.Name,
+		if service.Threshold == nil {
+			continue
 		}
 
-		if service.Threshold != nil {
-			policy.Hot = pool.Threshold{
+		policy := pool.Policy{
+			Service: service.Name,
+			Hot: pool.Threshold{
 				RPS:      service.Threshold.Hot.RPS,
 				InFlight: service.Threshold.Hot.InFlight,
-			}
-			policy.Super = pool.Threshold{
+			},
+			Super: pool.Threshold{
 				RPS:      service.Threshold.Super.RPS,
 				InFlight: service.Threshold.Super.InFlight,
-			}
+			},
 		}
 
 		policies = append(policies, policy)

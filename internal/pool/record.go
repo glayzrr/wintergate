@@ -75,7 +75,7 @@ func StartRecord(service string) DoneFunc {
 
 // StatusFor 기본 Recorder에서 서비스 트래픽 상태를 반환합니다.
 func StatusFor(service string) (Status, error) {
-	return DefaultRecorder().Status(service)
+	return DefaultRecorder().StatusFor(service)
 }
 
 // Start 서비스 요청 시작을 기록하고 완료 함수를 반환합니다.
@@ -109,8 +109,8 @@ func (r *Recorder) Start(service string) DoneFunc {
 	}
 }
 
-// Status 서비스 트래픽 상태의 현재 값을 반환합니다.
-func (r *Recorder) Status(service string) (Status, error) {
+// StatusFor 서비스 트래픽 상태의 현재 값을 반환합니다.
+func (r *Recorder) StatusFor(service string) (Status, error) {
 	if r == nil {
 		return Status{}, fmt.Errorf("%w: recorder is nil", ErrStatusNotFound)
 	}

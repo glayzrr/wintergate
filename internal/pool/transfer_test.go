@@ -116,7 +116,7 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	}
 }
 
-func TestHandleRequestReleasesSharedTierClientAfterContextTimeout(t *testing.T) {
+func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.T) {
 	resetDefaultState(t)
 
 	if err := RegisterPolicies([]Policy{
@@ -138,23 +138,20 @@ func TestHandleRequestReleasesSharedTierClientAfterContextTimeout(t *testing.T) 
 	errCh := handleRequestAsync(t, "order-service", upstream.URL, 200*time.Millisecond)
 	waitForSignal(t, upstreamStarted, "first upstream request")
 
-	hotClient := sharedCachedClient(t, defaultClients, TierHot)
+	hotClient := dedicatedCachedClient(t, defaultClients, "order-service")
 	if hotClient.tier != TierHot {
-		t.Fatalf("shared tier = %q, want %q", hotClient.tier, TierHot)
-	}
-	if _, found := defaultClients.dedicatedTier("order-service"); found {
-		t.Fatal("dedicated client exists after shared policy decision")
+		t.Fatalf("dedicated tier = %q, want %q", hotClient.tier, TierHot)
 	}
 	hotClientDone := waitCachedClient(hotClient)
 
-	assertStillWaiting(t, hotClientDone, 20*time.Millisecond, "shared client drained before the in-flight request timed out")
+	assertStillWaiting(t, hotClientDone, 20*time.Millisecond, "dedicated client drained before the in-flight request timed out")
 
 	err := waitForRequestError(t, errCh)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("HandleRequest error = %v, want context deadline exceeded", err)
 	}
 
-	waitForDone(t, hotClientDone, time.Second, "shared client wait group")
+	waitForDone(t, hotClientDone, time.Second, "dedicated client wait group")
 
 	status, err := StatusFor("order-service")
 	if err != nil {
@@ -332,6 +329,20 @@ func sharedCachedClient(t *testing.T, store *clientStore, tier Tier) *cachedClie
 	client := store.shared[tier]
 	if client == nil {
 		t.Fatalf("shared client for %q not found", tier)
+	}
+
+	return client
+}
+
+func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *cachedClient {
+	t.Helper()
+
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	client := store.dedicated[normalizeService(service)]
+	if client == nil {
+		t.Fatalf("dedicated client for %q not found", service)
 	}
 
 	return client

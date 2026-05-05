@@ -20,10 +20,9 @@ type Policy struct {
 
 // Decision 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
 type Decision struct {
-	Service    string
-	Registered bool
-	Tier       Tier
-	Dedicated  bool
+	Service   string
+	Tier      Tier
+	Dedicated bool
 }
 
 // PolicyRegistry 서비스별 트래픽 분류 정책을 저장합니다.
@@ -86,8 +85,8 @@ func (r *PolicyRegistry) Register(policies []Policy) error {
 	return nil
 }
 
-// Policy 서비스별 등록 정책의 사본을 반환합니다.
-func (r *PolicyRegistry) Policy(service string) (Policy, bool) {
+// PolicyFor 서비스별 등록 정책의 사본을 반환합니다.
+func (r *PolicyRegistry) PolicyFor(service string) (Policy, bool) {
 	if r == nil {
 		return Policy{}, false
 	}
@@ -119,13 +118,13 @@ func (r *PolicyRegistry) Decide(status Status) Decision {
 	}
 
 	// 등록된 정책이 없으면 기본 정책을 반환합니다.
-	policy, found := r.Policy(normalizedService)
+	policy, found := r.PolicyFor(normalizedService)
 	if !found {
 		return decision
 	}
 
-	decision.Registered = true
 	decision.Tier = decideTier(status, policy)
+	decision.Dedicated = true
 
 	return decision
 }

@@ -13,7 +13,7 @@ func TestRecorderStartStoresInFlightRequest(t *testing.T) {
 
 	done := recorder.Start(" order-service ")
 
-	snapshot, err := recorder.Status("order-service")
+	snapshot, err := recorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("Status returned error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestRecorderDoneFinishesRequestOnce(t *testing.T) {
 	done()
 	done()
 
-	snapshot, err := recorder.Status("order-service")
+	snapshot, err := recorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("Status returned error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestRecorderTracksServicesIndependently(t *testing.T) {
 	_ = recorder.Start("payment-service")
 	orderDone()
 
-	orderSnapshot, err := recorder.Status("order-service")
+	orderSnapshot, err := recorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("Status returned error for order-service: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestRecorderTracksServicesIndependently(t *testing.T) {
 		t.Fatalf("orderSnapshot.InFlight = %d, want %d", orderSnapshot.InFlight, 0)
 	}
 
-	paymentSnapshot, err := recorder.Status("payment-service")
+	paymentSnapshot, err := recorder.StatusFor("payment-service")
 	if err != nil {
 		t.Fatalf("Status returned error for payment-service: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestRecorderCalculatesRPSFromWindow(t *testing.T) {
 		recorder.Start("order-service")
 	}
 
-	snapshot, err := recorder.Status("order-service")
+	snapshot, err := recorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("Status returned error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRecorderCalculatesRPSFromWindow(t *testing.T) {
 	}
 
 	now = now.Add(11 * time.Second)
-	snapshot, err = recorder.Status("order-service")
+	snapshot, err = recorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("Status returned error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestRecorderStartIgnoresBlankService(t *testing.T) {
 	done := recorder.Start(" ")
 	done()
 
-	_, err := recorder.Status(" ")
+	_, err := recorder.StatusFor(" ")
 	if err == nil {
 		t.Fatal("Status returned nil error")
 	}
@@ -135,7 +135,7 @@ func TestRecorderStartIgnoresBlankService(t *testing.T) {
 func TestRecorderStatusReturnsErrorWhenServiceMissing(t *testing.T) {
 	recorder := NewRecorder()
 
-	_, err := recorder.Status("missing-service")
+	_, err := recorder.StatusFor("missing-service")
 	if err == nil {
 		t.Fatal("Status returned nil error")
 	}
@@ -158,7 +158,7 @@ func TestRecorderIsSafeForConcurrentRequests(t *testing.T) {
 	}
 	waitGroup.Wait()
 
-	snapshot, err := recorder.Status("order-service")
+	snapshot, err := recorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("Status returned error: %v", err)
 	}
