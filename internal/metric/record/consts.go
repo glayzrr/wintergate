@@ -3,6 +3,7 @@ package record
 const (
 	namespace = "wintergate"
 
+	labelEvent      = "event"
 	labelService    = "service"
 	labelTier       = "tier"
 	labelPool       = "pool"
@@ -17,8 +18,11 @@ const (
 	poolShared    = "shared"
 	poolDedicated = "dedicated"
 
-	serviceUnknown = "unknown"
-	valueUnknown   = "unknown"
+	unknown = "unknown"
+
+	connectionEventNew        = "new"
+	connectionEventReused     = "reused"
+	connectionEventIdleReused = "idle_reused"
 
 	routeGateway = "gateway"
 )

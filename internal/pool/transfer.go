@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
+	"time"
 
 	metricrecord "wintergate/internal/metric/record"
 )
@@ -63,14 +65,41 @@ func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.R
 		return err
 	}
 
-	// 메트릭 수집을 위해 pool 상태를 기록합니다.
+	// pool 선택 결과를 한 번 만들어 요청 메트릭과 connection trace가 같은 label을 사용하게 합니다.
+	poolObservation := metricrecord.PoolObservation{
+		Service:   decision.Service,
+		Tier:      string(decision.Tier),
+		Dedicated: decision.Dedicated,
+	}
+
+	// 메트릭 수집을 위해 pool 선택과 upstream 요청 시작 시점을 기록합니다.
 	var donePool metricrecord.PoolDoneFunc
 	if recorder != nil {
-		donePool = recorder.RecordPool(metricrecord.PoolObservation{
-			Service:   decision.Service,
-			Tier:      string(decision.Tier),
-			Dedicated: decision.Dedicated,
-		})
+		donePool = recorder.RecordPool(poolObservation)
+	}
+
+	var getConnAt time.Time
+	if recorder != nil {
+		trace := &httptrace.ClientTrace{
+			GetConn: func(_ string) {
+				getConnAt = time.Now()
+			},
+			GotConn: func(info httptrace.GotConnInfo) {
+				waitDuration := time.Duration(0)
+				if !getConnAt.IsZero() {
+					waitDuration = time.Since(getConnAt)
+				}
+
+				// httptrace가 알려준 connection 획득 결과를 record 패키지에 전달해 event label은 내부에서 정합니다.
+				recorder.RecordConnection(poolObservation, metricrecord.ConnectionObservation{
+					Reused:       info.Reused,
+					WasIdle:      info.WasIdle,
+					WaitDuration: waitDuration,
+				})
+			},
+		}
+
+		outReq = outReq.WithContext(httptrace.WithClientTrace(outReq.Context(), trace))
 	}
 
 	// 선택된 클라이언트로 업스트림에 요청하고 응답을 클라이언트에게 그대로 전달합니다.

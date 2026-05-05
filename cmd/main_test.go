@@ -253,8 +253,11 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 	metricBody := metricRecorder.Body.String()
 	for _, metricName := range []string{
 		"wintergate_pool_selections_total",
+		"wintergate_pool_requests_in_flight",
 		"wintergate_upstream_requests_total",
 		"wintergate_upstream_request_duration_seconds",
+		"wintergate_upstream_connection_events_total",
+		"wintergate_upstream_connection_wait_duration_seconds",
 	} {
 		if !strings.Contains(metricBody, metricName) {
 			t.Fatalf("metric response does not include %q", metricName)

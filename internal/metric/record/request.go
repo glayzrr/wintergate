@@ -10,26 +10,26 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// HTTPObservation HTTP 요청 처리 결과입니다.
-type HTTPObservation struct {
+// RequestObservation HTTP 요청 처리 결과입니다.
+type RequestObservation struct {
 	Method     string
 	Path       string
 	StatusCode int
 }
 
-// HTTPDoneFunc HTTP 요청 종료 시 메트릭을 기록합니다.
-type HTTPDoneFunc func(HTTPObservation)
+// RequestDoneFunc HTTP 요청 종료 시 메트릭을 기록합니다.
+type RequestDoneFunc func(RequestObservation)
 
-// HTTPRecorder HTTP 요청 메트릭을 기록합니다.
-type HTTPRecorder struct {
+// RequestRecorder HTTP 요청 메트릭을 기록합니다.
+type RequestRecorder struct {
 	requests *prometheus.CounterVec
 	duration *prometheus.HistogramVec
 	inFlight prometheus.Gauge
 	failures *prometheus.CounterVec
 }
 
-func newHTTPRecorder(registry *prometheus.Registry) *HTTPRecorder {
-	recorder := &HTTPRecorder{
+func newRequestRecorder(registry *prometheus.Registry) *RequestRecorder {
+	recorder := &RequestRecorder{
 		requests: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: namespace,
@@ -75,14 +75,14 @@ func newHTTPRecorder(registry *prometheus.Registry) *HTTPRecorder {
 	return recorder
 }
 
-// Start HTTP 요청 시작을 기록하고 종료 기록 함수를 반환합니다.
-func (r *HTTPRecorder) Start() HTTPDoneFunc {
+func (r *RequestRecorder) recordRequest() RequestDoneFunc {
 	startedAt := time.Now()
 	r.inFlight.Inc()
 
 	var once sync.Once
-	return func(observation HTTPObservation) {
+	return func(observation RequestObservation) {
 		once.Do(func() {
+			// 요청 완료 시점에 현재 처리 중인 HTTP 요청 수를 되돌립니다.
 			r.inFlight.Dec()
 
 			path := normalizePath(observation.Path)
@@ -91,10 +91,12 @@ func (r *HTTPRecorder) Start() HTTPDoneFunc {
 			status := strconv.Itoa(statusCode)
 			result := resultFor(statusCode)
 
+			// HTTP 요청 수와 처리 시간을 route/method/status/result 단위로 기록합니다.
 			r.requests.WithLabelValues(path, method, status, result).Inc()
 			r.duration.WithLabelValues(path, method, status, result).Observe(time.Since(startedAt).Seconds())
 
 			if result == resultError {
+				// 실패 카운터는 4xx/5xx 응답만 별도로 집계합니다.
 				r.failures.WithLabelValues(path, method, status).Inc()
 			}
 		})

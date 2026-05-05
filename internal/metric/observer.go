@@ -26,7 +26,7 @@ func BuildRequestObserver(recorder *metricrecord.Recorder) (gin.HandlerFunc, err
 			path = routeGateway
 		}
 
-		done(metricrecord.HTTPObservation{
+		done(metricrecord.RequestObservation{
 			Method:     ctx.Request.Method,
 			Path:       path,
 			StatusCode: ctx.Writer.Status(),
