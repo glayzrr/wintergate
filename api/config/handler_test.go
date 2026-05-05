@@ -1,11 +1,13 @@
 package configapi
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -84,6 +86,54 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 
 	if authRuntimeConfig.JWTIssuer != "auth-service" {
 		t.Fatalf("JWTIssuer = %q, want %q", authRuntimeConfig.JWTIssuer, "auth-service")
+	}
+}
+
+func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	var logBuffer bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuffer, nil)))
+	defer slog.SetDefault(previousLogger)
+
+	registerer := internalconfig.NewRegisterer()
+	handler, err := NewHandler(registerer)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		ConfigRoute,
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"routes":[{"name":"order-service","host":"localhost","port":8080,"endpoints":[{"path":"/api/order","method":"POST","roles":[]}]}]}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	logOutput := logBuffer.String()
+	if !strings.Contains(logOutput, logConfigRegisterRequested) {
+		t.Fatalf("logOutput = %q, want log message %q", logOutput, logConfigRegisterRequested)
+	}
+	if !strings.Contains(logOutput, ConfigRoute) {
+		t.Fatalf("logOutput = %q, want route %q", logOutput, ConfigRoute)
+	}
+	if !strings.Contains(logOutput, logConfigRegisterPayload) {
+		t.Fatalf("logOutput = %q, want log message %q", logOutput, logConfigRegisterPayload)
+	}
+	if !strings.Contains(logOutput, "order-service") {
+		t.Fatalf("logOutput = %q, want service name", logOutput)
+	}
+	if !strings.Contains(logOutput, "jwt_secret") {
+		t.Fatalf("logOutput = %q, want jwt_secret field", logOutput)
+	}
+	if !strings.Contains(logOutput, "secret") {
+		t.Fatalf("logOutput = %q, want raw config value", logOutput)
 	}
 }
 

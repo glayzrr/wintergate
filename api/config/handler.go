@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 
 	responseapi "wintergate/api/response"
@@ -35,6 +36,16 @@ func (h *Handler) RegisterRoutes(router gin.IRouter) {
 
 // EnrollConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
 func (h *Handler) EnrollConfig(ctx *gin.Context) {
+	slog.Info(
+		logConfigRegisterRequested,
+		logAttrMethod,
+		ctx.Request.Method,
+		logAttrPath,
+		ctx.Request.URL.Path,
+		logAttrClientIP,
+		ctx.ClientIP(),
+	)
+
 	var settings internalconfig.Settings
 	if err := decodeSettings(ctx.Request.Body, &settings); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
@@ -43,6 +54,23 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		})
 		return
 	}
+
+	configPayload, err := encodeSettingsJson(settings)
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusInternalServerError, responseapi.APIResponse{
+			Success: false,
+			Message: responseRegisterFailed,
+		})
+		return
+	}
+
+	slog.Info(
+		logConfigRegisterPayload,
+		logAttrConfig,
+		configPayload,
+		logAttrClientIP,
+		ctx.ClientIP(),
+	)
 
 	if err := h.registerer.Register(settings); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
@@ -74,4 +102,13 @@ func decodeSettings(body io.Reader, settings *internalconfig.Settings) error {
 	}
 
 	return nil
+}
+
+func encodeSettingsJson(settings internalconfig.Settings) (string, error) {
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return "", fmt.Errorf("marshal settings log payload: %w", err)
+	}
+
+	return string(payload), nil
 }
