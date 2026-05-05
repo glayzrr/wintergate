@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	metricrecord "wintergate/internal/metric/record"
 )
 
 // NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
@@ -37,7 +39,7 @@ func makePool(config Config) (*http.Transport, error) {
 }
 
 // HandleRequest 서비스 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
-func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request) error {
+func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request, recorder *metricrecord.Recorder) error {
 	// 요청 시작과 종료 시점을 기록해 서비스별 트래픽 상태를 갱신합니다.
 	doneFunc := StartRecord(serviceName)
 	defer doneFunc()
@@ -61,13 +63,32 @@ func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.R
 		return err
 	}
 
+	var donePool metricrecord.PoolDoneFunc
+	if recorder != nil {
+		donePool = recorder.RecordPool(metricrecord.PoolObservation{
+			Service:   decision.Service,
+			Tier:      string(decision.Tier),
+			Dedicated: decision.Dedicated,
+		})
+	}
+
 	// 선택된 클라이언트로 업스트림에 요청하고 응답을 클라이언트에게 그대로 전달합니다.
 	resp, err := cachedClient.client.Do(outReq)
 	if err != nil {
+		if donePool != nil {
+			donePool(metricrecord.PoolResult{
+				StatusCode: http.StatusBadGateway,
+			})
+		}
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return err
 	}
 	defer resp.Body.Close()
+	if donePool != nil {
+		donePool(metricrecord.PoolResult{
+			StatusCode: resp.StatusCode,
+		})
+	}
 
 	copyHeader(w.Header(), resp.Header)
 	removeHopByHopHeaders(w.Header())

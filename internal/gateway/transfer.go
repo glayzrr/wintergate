@@ -7,15 +7,20 @@ import (
 	"strconv"
 	"strings"
 
+	metricrecord "wintergate/internal/metric/record"
 	"wintergate/internal/pool"
 )
 
 // TransferTask 인증과 인가를 통과한 요청을 업스트림 서비스로 전달합니다.
-type TransferTask struct{}
+type TransferTask struct {
+	recorder *metricrecord.Recorder
+}
 
 // NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
-func NewTransferTask() *TransferTask {
-	return &TransferTask{}
+func NewTransferTask(recorder *metricrecord.Recorder) *TransferTask {
+	return &TransferTask{
+		recorder: recorder,
+	}
 }
 
 // Run 현재 요청을 service host와 port로 전달하고 업스트림 응답을 클라이언트에 기록합니다.
@@ -40,7 +45,7 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 	}
 
 	// 커넥션 풀 정책을 적용해 업스트림으로 요청을 전달하고 응답을 클라이언트에 씁니다.
-	if err := pool.HandleRequest(state.Request.Service, upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest); err != nil {
+	if err := pool.HandleRequest(state.Request.Service, upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest, t.recorder); err != nil {
 		return fmt.Errorf("handle upstream request: %w", err)
 	}
 

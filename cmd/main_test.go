@@ -87,6 +87,61 @@ func TestNewRouterRegistersConfigRoute(t *testing.T) {
 	}
 }
 
+func TestNewRouterRegistersMetricsRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router, err := newRouter()
+	if err != nil {
+		t.Fatalf("newRouter returned error: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/metric", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	if !strings.Contains(recorder.Body.String(), "go_goroutines") {
+		t.Fatal("metric response does not include go_goroutines")
+	}
+}
+
+func TestNewRouterRecordsHTTPMetrics(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router, err := newRouter()
+	if err != nil {
+		t.Fatalf("newRouter returned error: %v", err)
+	}
+
+	configRequest := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(`{`))
+	configRequest.Header.Set("Content-Type", "application/json")
+	configRecorder := httptest.NewRecorder()
+	router.ServeHTTP(configRecorder, configRequest)
+
+	if configRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("config status = %d, want %d", configRecorder.Code, http.StatusBadRequest)
+	}
+
+	metricRequest := httptest.NewRequest(http.MethodGet, "/metric", nil)
+	metricRecorder := httptest.NewRecorder()
+	router.ServeHTTP(metricRecorder, metricRequest)
+
+	body := metricRecorder.Body.String()
+	for _, metricName := range []string{
+		"wintergate_http_requests_total",
+		"wintergate_http_request_duration_seconds",
+		"wintergate_http_requests_in_flight",
+		"wintergate_http_request_failures_total",
+	} {
+		if !strings.Contains(body, metricName) {
+			t.Fatalf("metric response does not include %q", metricName)
+		}
+	}
+}
+
 func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -189,6 +244,21 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 
 	if recorder.Body.String() != "upstream ok" {
 		t.Fatalf("body = %q, want %q", recorder.Body.String(), "upstream ok")
+	}
+
+	metricRequest := httptest.NewRequest(http.MethodGet, "/metric", nil)
+	metricRecorder := httptest.NewRecorder()
+	router.ServeHTTP(metricRecorder, metricRequest)
+
+	metricBody := metricRecorder.Body.String()
+	for _, metricName := range []string{
+		"wintergate_pool_selections_total",
+		"wintergate_upstream_requests_total",
+		"wintergate_upstream_request_duration_seconds",
+	} {
+		if !strings.Contains(metricBody, metricName) {
+			t.Fatalf("metric response does not include %q", metricName)
+		}
 	}
 }
 

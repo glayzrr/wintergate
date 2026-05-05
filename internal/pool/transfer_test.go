@@ -93,7 +93,7 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	request.Header.Set("X-Request-ID", "request-1")
 	recorder := httptest.NewRecorder()
 
-	if err := HandleRequest("order-service", upstream.URL, recorder, request); err != nil {
+	if err := HandleRequest("order-service", upstream.URL, recorder, request, nil); err != nil {
 		t.Fatalf("HandleRequest returned error: %v", err)
 	}
 
@@ -317,7 +317,7 @@ func handleRequestAsync(t *testing.T, service, host string, timeout time.Duratio
 
 	go func() {
 		defer cancel()
-		errCh <- HandleRequest(service, host, recorder, request)
+		errCh <- HandleRequest(service, host, recorder, request, nil)
 	}()
 
 	return errCh
