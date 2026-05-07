@@ -17,14 +17,14 @@ func TestNewTransportAppliesTierConfig(t *testing.T) {
 		t.Fatalf("NewTransport returned error: %v", err)
 	}
 
-	if transport.MaxIdleConns != 400 {
-		t.Fatalf("transport.MaxIdleConns = %d, want %d", transport.MaxIdleConns, 400)
+	if transport.MaxIdleConns != 4096 {
+		t.Fatalf("transport.MaxIdleConns = %d, want %d", transport.MaxIdleConns, 4096)
 	}
-	if transport.MaxIdleConnsPerHost != 8 {
-		t.Fatalf("transport.MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, 8)
+	if transport.MaxIdleConnsPerHost != 2048 {
+		t.Fatalf("transport.MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, 2048)
 	}
-	if transport.MaxConnsPerHost != 0 {
-		t.Fatalf("transport.MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, 0)
+	if transport.MaxConnsPerHost != 4096 {
+		t.Fatalf("transport.MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, 4096)
 	}
 	if transport.IdleConnTimeout != 360*time.Second {
 		t.Fatalf("transport.IdleConnTimeout = %s, want %s", transport.IdleConnTimeout, 360*time.Second)
