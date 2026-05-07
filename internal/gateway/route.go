@@ -6,9 +6,10 @@ import (
 	"strings"
 
 	internalconfig "wintergate/internal/route/config"
+	"wintergate/internal/utils"
 )
 
-// RouteTask 요청 주소에 대응하는 서비스와 라우트 정책을 찾습니다.
+// RouteTask 요청 주소에 대응하는 설정 키와 라우트 정책을 찾습니다.
 type RouteTask struct {
 	registry *internalconfig.Registry
 }
@@ -20,22 +21,21 @@ func NewRouteTask(registry *internalconfig.Registry) *RouteTask {
 	}
 }
 
-// Run 요청의 host와 port로 서비스를 식별하고 매칭된 라우트 정책을 상태에 기록합니다.
+// Run 요청의 host와 port로 설정 키를 만들고 매칭된 라우트 정책을 상태에 기록합니다.
 func (t *RouteTask) Run(_ context.Context, state *State) error {
 	// 라우트 정책 저장소가 없으면 요청을 분류할 수 없으므로 즉시 실패합니다.
 	if t.registry == nil {
 		return fmt.Errorf("%w: route registry is required", ErrInvalidRequest)
 	}
 
-	// nginx가 전달한 host와 port로 서비스 이름을 식별합니다.
-	service, err := t.registry.ServiceFor(state.Request.Host, state.Request.Port)
+	configKey, err := utils.ConfigKey(state.Request.Host, state.Request.Port)
 	if err != nil {
-		return fmt.Errorf("find service: %w", err)
+		return fmt.Errorf("%w: build config key: %w", ErrInvalidRequest, err)
 	}
-	state.Request.Service = service
+	state.Request.ConfigKey = configKey
 
-	// 식별된 서비스에 등록된 엔드포인트 정책 목록을 조회합니다.
-	routeInfos, err := t.registry.RouteInfos(service)
+	// 식별된 설정 키에 등록된 엔드포인트 정책 목록을 조회합니다.
+	routeInfos, err := t.registry.RouteInfos(configKey)
 	if err != nil {
 		return fmt.Errorf("route infos: %w", err)
 	}

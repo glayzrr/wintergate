@@ -10,7 +10,13 @@ import (
 
 // Registry 인증 런타임 설정과 JWKS를 메모리에 보관합니다.
 type Registry struct {
-	mu        sync.RWMutex
+	configs map[string]runtimeConfig
+
+	// mu는 configs map의 동시 조회와 설정 교체를 보호합니다.
+	mu sync.RWMutex
+}
+
+type runtimeConfig struct {
 	algorithm string
 	audience  string
 	clockSkew time.Duration
@@ -18,18 +24,22 @@ type Registry struct {
 	secret    []byte
 	jwks      []byte
 	keys      map[string]*rsa.PublicKey
-	set       bool
 }
 
 // NewRegistry 빈 인증 설정 Registry를 생성합니다.
 func NewRegistry() *Registry {
 	return &Registry{
-		keys: make(map[string]*rsa.PublicKey),
+		configs: make(map[string]runtimeConfig),
 	}
 }
 
-// Register 전달받은 인증 런타임 설정과 JWKS로 현재 값을 교체합니다.
+// Register 전달받은 기본 인증 런타임 설정과 JWKS로 현재 값을 교체합니다.
 func (r *Registry) Register(cfg Config) error {
+	return r.RegisterFor("", cfg)
+}
+
+// RegisterFor 전달받은 설정 키의 인증 런타임 설정과 JWKS로 현재 값을 교체합니다.
+func (r *Registry) RegisterFor(configKey string, cfg Config) error {
 	if strings.TrimSpace(cfg.JWTAlgorithm) == "" {
 		return fmt.Errorf("%w: jwt_algorithm is required", ErrInvalidConfig)
 	}
@@ -79,41 +89,53 @@ func (r *Registry) Register(cfg Config) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.algorithm = cfg.JWTAlgorithm
-	r.audience = cfg.JWTAudience
-	r.clockSkew = cfg.JWTClockSkew
-	r.issuer = cfg.JWTIssuer
-	r.secret = jwtSecret
-	r.jwks = jwks
-	r.keys = keys
-	r.set = true
+	r.configs[normalizeConfigKey(configKey)] = runtimeConfig{
+		algorithm: cfg.JWTAlgorithm,
+		audience:  cfg.JWTAudience,
+		clockSkew: cfg.JWTClockSkew,
+		issuer:    cfg.JWTIssuer,
+		secret:    jwtSecret,
+		jwks:      jwks,
+		keys:      keys,
+	}
 
 	return nil
 }
 
 // Snapshot 현재 인증 런타임 설정의 사본을 반환합니다.
 func (r *Registry) Snapshot() (Config, bool) {
+	return r.SnapshotFor("")
+}
+
+// SnapshotFor 지정한 설정 키의 인증 런타임 설정의 사본을 반환합니다.
+func (r *Registry) SnapshotFor(configKey string) (Config, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if !r.set {
+	cfg, found := r.configs[normalizeConfigKey(configKey)]
+	if !found {
 		return Config{}, false
 	}
 
-	cfg := Config{
-		JWTAlgorithm: r.algorithm,
-		JWTAudience:  r.audience,
-		JWTClockSkew: r.clockSkew,
-		JWTIssuer:    r.issuer,
-		JWTSecret:    append([]byte(nil), r.secret...),
-		JWKS:         append([]byte(nil), r.jwks...),
+	snapshot := Config{
+		JWTAlgorithm: cfg.algorithm,
+		JWTAudience:  cfg.audience,
+		JWTClockSkew: cfg.clockSkew,
+		JWTIssuer:    cfg.issuer,
+		JWTSecret:    append([]byte(nil), cfg.secret...),
+		JWKS:         append([]byte(nil), cfg.jwks...),
 	}
 
-	return cfg, true
+	return snapshot, true
 }
 
 // PublicKey 주어진 kid에 해당하는 RSA 공개키를 반환합니다.
 func (r *Registry) PublicKey(kid string) (*rsa.PublicKey, error) {
+	return r.PublicKeyFor("", kid)
+}
+
+// PublicKeyFor 지정한 설정 키의 kid에 해당하는 RSA 공개키를 반환합니다.
+func (r *Registry) PublicKeyFor(configKey, kid string) (*rsa.PublicKey, error) {
 	trimmedKeyID := strings.TrimSpace(kid)
 	if trimmedKeyID == "" {
 		return nil, fmt.Errorf("%w: kid is required", ErrInvalidKeyID)
@@ -122,14 +144,19 @@ func (r *Registry) PublicKey(kid string) (*rsa.PublicKey, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	if !r.set || len(r.keys) == 0 {
+	cfg, found := r.configs[normalizeConfigKey(configKey)]
+	if !found || len(cfg.keys) == 0 {
 		return nil, fmt.Errorf("%w: no registered keys", ErrKeySetUnavailable)
 	}
 
-	publicKey, found := r.keys[trimmedKeyID]
+	publicKey, found := cfg.keys[trimmedKeyID]
 	if !found {
 		return nil, fmt.Errorf("%w: kid %q", ErrKeyNotFound, trimmedKeyID)
 	}
 
 	return publicKey, nil
+}
+
+func normalizeConfigKey(configKey string) string {
+	return strings.ToLower(strings.TrimSpace(configKey))
 }

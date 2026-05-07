@@ -12,7 +12,7 @@ type Request struct {
 	Scheme               string
 	Host                 string
 	Port                 string
-	Service             string
+	ConfigKey            string
 	Method              string
 	Path                string
 	AuthorizationHeader string

@@ -11,13 +11,10 @@ import (
 func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 	registry := routeconfig.NewRegistry()
 	if err := registry.Register(routeconfig.Config{
-		Services: []routeconfig.Service{
-			{Name: "order-service", Host: "localhost", Port: 8080},
-		},
+		Key: "localhost:8080",
 		Entries: []routeconfig.Entry{
 			{
 				Path:       "/orders",
-				Service:    "order-service",
 				HttpMethod: "GET",
 				Roles:      []string{"ADMIN"},
 			},
@@ -40,8 +37,8 @@ func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if state.Request.Service != "order-service" {
-		t.Fatalf("state.Request.Service = %q, want %q", state.Request.Service, "order-service")
+	if state.Request.ConfigKey != "localhost:8080" {
+		t.Fatalf("state.Request.ConfigKey = %q, want %q", state.Request.ConfigKey, "localhost:8080")
 	}
 	if state.Route == nil {
 		t.Fatal("state.Route is nil")
@@ -57,13 +54,10 @@ func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
 	registry := routeconfig.NewRegistry()
 	if err := registry.Register(routeconfig.Config{
-		Services: []routeconfig.Service{
-			{Name: "order-service", Host: "localhost", Port: 8080},
-		},
+		Key: "localhost:8080",
 		Entries: []routeconfig.Entry{
 			{
 				Path:       "/orders",
-				Service:    "order-service",
 				HttpMethod: "GET",
 			},
 		},
@@ -94,13 +88,10 @@ func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
 func TestRouteTaskRunLeavesRouteNilWhenRouteDoesNotMatchRequest(t *testing.T) {
 	registry := routeconfig.NewRegistry()
 	if err := registry.Register(routeconfig.Config{
-		Services: []routeconfig.Service{
-			{Name: "order-service", Host: "localhost", Port: 8080},
-		},
+		Key: "localhost:8080",
 		Entries: []routeconfig.Entry{
 			{
 				Path:       "/orders",
-				Service:    "order-service",
 				HttpMethod: "GET",
 				Roles:      []string{"ADMIN"},
 			},

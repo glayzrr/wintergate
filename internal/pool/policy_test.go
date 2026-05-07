@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestPolicyRegistryDecideReturnsNormalWhenPolicyMissing(t *testing.T) {
+func TestPolicyRegistryDecideUsesSharedPoolWhenPolicyMissing(t *testing.T) {
 	registry := NewPolicyRegistry()
 
 	decision := registry.Decide(Status{
@@ -14,9 +14,6 @@ func TestPolicyRegistryDecideReturnsNormalWhenPolicyMissing(t *testing.T) {
 		InFlight: 1000,
 	})
 
-	if decision.Tier != TierNormal {
-		t.Fatalf("decision.Tier = %q, want %q", decision.Tier, TierNormal)
-	}
 	if decision.Dedicated {
 		t.Fatal("decision.Dedicated = true, want false")
 	}
@@ -99,7 +96,7 @@ func TestPolicyRegistryDecideUsesDedicatedPoolWhenPolicyConfigured(t *testing.T)
 	}
 }
 
-func TestPolicyRegistryRegisterReplacesPolicies(t *testing.T) {
+func TestPolicyRegistryRegisterStoresAndReplacesPolicies(t *testing.T) {
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
@@ -112,6 +109,10 @@ func TestPolicyRegistryRegisterReplacesPolicies(t *testing.T) {
 
 	if err := registry.Register([]Policy{
 		{
+			Service: "order-service",
+			Hot:     Threshold{RPS: 200},
+		},
+		{
 			Service: "payment-service",
 			Hot:     Threshold{RPS: 100},
 		},
@@ -119,11 +120,40 @@ func TestPolicyRegistryRegisterReplacesPolicies(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	if _, found := registry.PolicyFor("order-service"); found {
-		t.Fatal("Policy found replaced order-service")
+	orderPolicy, found := registry.PolicyFor("order-service")
+	if !found {
+		t.Fatal("Policy did not find order-service")
+	}
+	if orderPolicy.Hot.RPS != 200 {
+		t.Fatalf("orderPolicy.Hot.RPS = %f, want %f", orderPolicy.Hot.RPS, float64(200))
 	}
 	if _, found := registry.PolicyFor("payment-service"); !found {
 		t.Fatal("Policy did not find payment-service")
+	}
+}
+
+func TestPolicyRegistryRegisterUsesLastPolicyWhenServiceDuplicated(t *testing.T) {
+	registry := NewPolicyRegistry()
+
+	if err := registry.Register([]Policy{
+		{
+			Service: "order-service",
+			Hot:     Threshold{RPS: 100},
+		},
+		{
+			Service: " order-service ",
+			Hot:     Threshold{RPS: 200},
+		},
+	}); err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
+
+	policy, found := registry.PolicyFor("order-service")
+	if !found {
+		t.Fatal("Policy did not find order-service")
+	}
+	if policy.Hot.RPS != 200 {
+		t.Fatalf("policy.Hot.RPS = %f, want %f", policy.Hot.RPS, float64(200))
 	}
 }
 
@@ -136,13 +166,6 @@ func TestPolicyRegistryRegisterReturnsErrorWhenInvalid(t *testing.T) {
 			name: "blank service",
 			policies: []Policy{
 				{Service: " "},
-			},
-		},
-		{
-			name: "duplicate service",
-			policies: []Policy{
-				{Service: "order-service"},
-				{Service: " order-service "},
 			},
 		},
 		{

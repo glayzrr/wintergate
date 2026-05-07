@@ -26,7 +26,7 @@ func NewOrchestrator(tasks ...Task) *Orchestrator {
 
 // Receive 게이트웨이로 들어온 요청에 대해 등록된 작업을 순차 실행합니다.
 func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
-	trimmedService := strings.TrimSpace(request.Service)
+	trimmedConfigKey := strings.TrimSpace(request.ConfigKey)
 	trimmedScheme := strings.TrimSpace(request.Scheme)
 	trimmedHost := strings.TrimSpace(request.Host)
 	trimmedPort := strings.TrimSpace(request.Port)
@@ -45,7 +45,7 @@ func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
 			Scheme:               trimmedScheme,
 			Host:                 trimmedHost,
 			Port:                 trimmedPort,
-			Service:             trimmedService,
+			ConfigKey:            trimmedConfigKey,
 			Method:              trimmedMethod,
 			Path:                trimmedPath,
 			AuthorizationHeader: request.AuthorizationHeader,

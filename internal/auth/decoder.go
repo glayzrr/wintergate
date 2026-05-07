@@ -64,12 +64,17 @@ func BearerToken(authorizationHeader string) (string, error) {
 
 // Decode JWT의 서명과 표준 claims를 검증한 뒤 결과를 반환합니다.
 func (d *Decoder) Decode(token string) (Claims, error) {
+	return d.DecodeFor("", token)
+}
+
+// DecodeFor 지정한 설정 키의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
+func (d *Decoder) DecodeFor(configKey, token string) (Claims, error) {
 	trimmedToken := strings.TrimSpace(token)
 	if trimmedToken == "" {
 		return Claims{}, fmt.Errorf("%w: token is required", ErrInvalidToken)
 	}
 
-	cfg, found := d.registry.Snapshot()
+	cfg, found := d.registry.SnapshotFor(configKey)
 	if !found {
 		return Claims{}, fmt.Errorf("%w: auth config is not registered", ErrConfigUnavailable)
 	}
@@ -84,7 +89,7 @@ func (d *Decoder) Decode(token string) (Claims, error) {
 		return Claims{}, err
 	}
 
-	if err := d.verifySignature(context.Background(), cfg, header, headerPayload.signingInput, signature); err != nil {
+	if err := d.verifySignature(context.Background(), configKey, cfg, header, headerPayload.signingInput, signature); err != nil {
 		return Claims{}, err
 	}
 
@@ -173,7 +178,7 @@ func decodeClaims(payload []byte) (decodedClaims, error) {
 	}, nil
 }
 
-func (d *Decoder) verifySignature(_ context.Context, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
+func (d *Decoder) verifySignature(_ context.Context, configKey string, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
 	if header.Algorithm != cfg.JWTAlgorithm {
 		return fmt.Errorf("%w: expected %q, got %q", ErrUnsupportedAlgorithm, cfg.JWTAlgorithm, header.Algorithm)
 	}
@@ -196,7 +201,7 @@ func (d *Decoder) verifySignature(_ context.Context, cfg authconfig.Config, head
 			return fmt.Errorf("%w: kid is required", ErrInvalidToken)
 		}
 
-		publicKey, err := d.registry.PublicKey(trimmedKeyID)
+		publicKey, err := d.registry.PublicKeyFor(configKey, trimmedKeyID)
 		if err != nil {
 			return fmt.Errorf("load public key: %w", err)
 		}

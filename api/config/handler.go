@@ -72,7 +72,7 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		ctx.ClientIP(),
 	)
 
-	if err := h.registerer.Register(settings); err != nil {
+	if err := h.registerer.Register(settings, ctx.GetHeader(requestHeaderHost), ctx.GetHeader(requestHeaderPort)); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
 			Success: false,
 			Message: responseRegisterFailed,

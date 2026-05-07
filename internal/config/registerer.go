@@ -8,6 +8,7 @@ import (
 	authconfig "wintergate/internal/auth/config"
 	"wintergate/internal/pool"
 	routeconfig "wintergate/internal/route/config"
+	"wintergate/internal/utils"
 )
 
 // Registerer 설정 정보를 받아 필요한 내부 저장소에 일괄 등록합니다.
@@ -34,13 +35,18 @@ func (r *Registerer) RouteRegistry() *routeconfig.Registry {
 	return r.routeRegistry
 }
 
-// Register 설정 정보 전체를 내부 저장소에 반영합니다.
-func (r *Registerer) Register(settings Settings) error {
+// Register 설정 정보를 요청 헤더의 host:port에 대응하는 런타임 저장소에 반영합니다.
+func (r *Registerer) Register(settings Settings, host, port string) error {
 	if settings.Global == nil {
 		return fmt.Errorf("%w: global settings is required", ErrInvalidSettings)
 	}
-	if len(settings.Routes) == 0 {
-		return fmt.Errorf("%w: routes are required", ErrInvalidSettings)
+	if len(settings.Endpoints) == 0 {
+		return fmt.Errorf("%w: endpoints are required", ErrInvalidSettings)
+	}
+
+	configKey, err := utils.ConfigKey(host, port)
+	if err != nil {
+		return fmt.Errorf("%w: service address: %w", ErrInvalidSettings, err)
 	}
 
 	authRuntimeConfig, err := r.registerAuthConfig(settings.Global.Auth)
@@ -48,15 +54,20 @@ func (r *Registerer) Register(settings Settings) error {
 		return err
 	}
 
-	if err := r.authRegistry.Register(authRuntimeConfig); err != nil {
+	if err := r.authRegistry.RegisterFor(configKey, authRuntimeConfig); err != nil {
 		return fmt.Errorf("register auth config: %w", err)
 	}
 
-	if err := r.routeRegistry.Register(r.registerRouteConfig(settings.Routes)); err != nil {
+	if err := r.routeRegistry.Register(r.registerRouteConfig(configKey, settings.Endpoints)); err != nil {
 		return fmt.Errorf("register route config: %w", err)
 	}
 
-	if err := pool.RegisterPolicies(r.poolPolicies(settings.Routes)); err != nil {
+	if settings.Threshold == nil {
+		pool.UnregisterPolicy(configKey)
+		return nil
+	}
+
+	if err := pool.RegisterPolicies([]pool.Policy{r.poolPolicy(configKey, *settings.Threshold)}); err != nil {
 		return fmt.Errorf("register pool policies: %w", err)
 	}
 
@@ -94,53 +105,32 @@ func (r *Registerer) registerAuthConfig(authSettings *AuthSettings) (authconfig.
 	}, nil
 }
 
-func (r *Registerer) registerRouteConfig(routeSettings []RouteSettings) routeconfig.Config {
-	services := make([]routeconfig.Service, 0, len(routeSettings))
-	var entries []routeconfig.Entry
-	for _, service := range routeSettings {
-		services = append(services, routeconfig.Service{
-			Name: service.Name,
-			Host: service.Host,
-			Port: service.Port,
+func (r *Registerer) registerRouteConfig(configKey string, endpoints []EndpointSettings) routeconfig.Config {
+	entries := make([]routeconfig.Entry, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		entries = append(entries, routeconfig.Entry{
+			Path:       endpoint.Path,
+			HttpMethod: endpoint.Method,
+			Roles:      append([]string(nil), endpoint.Roles...),
 		})
-
-		for _, endpoint := range service.Endpoints {
-			entries = append(entries, routeconfig.Entry{
-				Path:       endpoint.Path,
-				Service:    service.Name,
-				HttpMethod: endpoint.Method,
-				Roles:      append([]string(nil), endpoint.Roles...),
-			})
-		}
 	}
 
 	return routeconfig.Config{
-		Services: services,
-		Entries:  entries,
+		Key:     configKey,
+		Entries: entries,
 	}
 }
 
-func (r *Registerer) poolPolicies(serviceSettings []RouteSettings) []pool.Policy {
-	policies := make([]pool.Policy, 0, len(serviceSettings))
-	for _, service := range serviceSettings {
-		if service.Threshold == nil {
-			continue
-		}
-
-		policy := pool.Policy{
-			Service: service.Name,
-			Hot: pool.Threshold{
-				RPS:      service.Threshold.Hot.RPS,
-				InFlight: service.Threshold.Hot.InFlight,
-			},
-			Super: pool.Threshold{
-				RPS:      service.Threshold.Super.RPS,
-				InFlight: service.Threshold.Super.InFlight,
-			},
-		}
-
-		policies = append(policies, policy)
+func (r *Registerer) poolPolicy(configKey string, threshold ThresholdSettings) pool.Policy {
+	return pool.Policy{
+		Service: configKey,
+		Hot: pool.Threshold{
+			RPS:      threshold.Hot.RPS,
+			InFlight: threshold.Hot.InFlight,
+		},
+		Super: pool.Threshold{
+			RPS:      threshold.Super.RPS,
+			InFlight: threshold.Super.InFlight,
+		},
 	}
-
-	return policies
 }

@@ -52,12 +52,17 @@ func RegisterPolicies(policies []Policy) error {
 	return DefaultPolicyRegistry().Register(policies)
 }
 
+// UnregisterPolicy 기본 정책 저장소에서 서비스별 정책을 제거합니다.
+func UnregisterPolicy(service string) {
+	DefaultPolicyRegistry().Delete(service)
+}
+
 // DecidePolicy 기본 정책 저장소에서 현재 상태에 대한 풀 사용 방식을 결정합니다.
 func DecidePolicy(status Status) Decision {
 	return DefaultPolicyRegistry().Decide(status)
 }
 
-// Register 전달받은 정책 목록으로 현재 정책을 교체합니다.
+// Register 전달받은 정책 목록을 등록하거나 기존 정책을 교체합니다.
 func (r *PolicyRegistry) Register(policies []Policy) error {
 	if r == nil {
 		return fmt.Errorf("%w: registry is nil", ErrInvalidPolicy)
@@ -70,19 +75,34 @@ func (r *PolicyRegistry) Register(policies []Policy) error {
 			return err
 		}
 
-		if _, exists := registeredPolicies[normalizedPolicy.Service]; exists {
-			return fmt.Errorf("%w: duplicate service %q", ErrInvalidPolicy, normalizedPolicy.Service)
-		}
-
 		registeredPolicies[normalizedPolicy.Service] = normalizedPolicy
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.policies = registeredPolicies
+	for service, policy := range registeredPolicies {
+		r.policies[service] = policy
+	}
 
 	return nil
+}
+
+// Delete 지정한 서비스의 정책을 제거합니다.
+func (r *PolicyRegistry) Delete(service string) {
+	if r == nil {
+		return
+	}
+
+	normalizedService := normalizeService(service)
+	if normalizedService == "" {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.policies, normalizedService)
 }
 
 // PolicyFor 서비스별 등록 정책의 사본을 반환합니다.

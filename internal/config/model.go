@@ -2,13 +2,14 @@ package config
 
 import "encoding/json"
 
-// Settings 외부에서 전달하는 Wintergate 설정 정보입니다.
+// Settings 외부에서 host:port별로 전달하는 Wintergate 설정 정보입니다.
 type Settings struct {
-	Global *GlobalSettings `json:"global"`
-	Routes []RouteSettings `json:"routes"`
+	Global    *GlobalSettings    `json:"global"`
+	Threshold *ThresholdSettings `json:"threshold"`
+	Endpoints []EndpointSettings `json:"endpoints"`
 }
 
-// GlobalSettings 모든 서비스에 공통으로 적용하는 설정 정보입니다.
+// GlobalSettings 해당 host:port 설정 안에서 공통으로 적용하는 설정 정보입니다.
 type GlobalSettings struct {
 	Auth *AuthSettings `json:"auth"`
 }
@@ -21,15 +22,6 @@ type AuthSettings struct {
 	JWTIssuer    string          `json:"jwt_issuer"`
 	JWTSecret    string          `json:"jwt_secret"`
 	JWKS         json.RawMessage `json:"jwks"`
-}
-
-// RouteSettings 하나의 업스트림 서비스와 엔드포인트 정책 설정 정보입니다.
-type RouteSettings struct {
-	Name      string             `json:"name"`
-	Host      string             `json:"host"`
-	Port      int                `json:"port"`
-	Threshold *ThresholdSettings `json:"threshold"`
-	Endpoints []EndpointSettings `json:"endpoints"`
 }
 
 // ThresholdSettings 서비스 트래픽 티어 승격 기준 설정 정보입니다.

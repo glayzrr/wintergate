@@ -33,7 +33,7 @@ func (t *AuthorizeTask) Run(_ context.Context, state *State) error {
 		return fmt.Errorf(
 			"%w: service %q does not allow %s %s",
 			ErrInvalidRequest,
-			state.Request.Service,
+			state.Request.ConfigKey,
 			state.Request.Method,
 			state.Request.Path,
 		)

@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -172,11 +171,6 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		t.Fatalf("SplitHostPort returned error: %v", err)
 	}
 
-	servicePortNumber, err := strconv.Atoi(servicePort)
-	if err != nil {
-		t.Fatalf("Atoi returned error: %v", err)
-	}
-
 	configBody, err := json.Marshal(map[string]any{
 		"global": map[string]any{
 			"auth": map[string]any{
@@ -187,28 +181,21 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 				"jwt_secret":     "shared-secret",
 			},
 		},
-		"routes": []map[string]any{
+		"threshold": map[string]any{
+			"hot": map[string]any{
+				"rps":       100,
+				"in-flight": 14,
+			},
+			"super": map[string]any{
+				"rps":       150,
+				"in-flight": 50,
+			},
+		},
+		"endpoints": []map[string]any{
 			{
-				"name": "order-service",
-				"host": serviceHost,
-				"port": servicePortNumber,
-				"threshold": map[string]any{
-					"hot": map[string]any{
-						"rps":       100,
-						"in-flight": 14,
-					},
-					"super": map[string]any{
-						"rps":       150,
-						"in-flight": 50,
-					},
-				},
-				"endpoints": []map[string]any{
-					{
-						"path":   "/orders",
-						"method": http.MethodGet,
-						"roles":  []string{},
-					},
-				},
+				"path":   "/orders",
+				"method": http.MethodGet,
+				"roles":  []string{},
 			},
 		},
 	})
@@ -222,6 +209,8 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		strings.NewReader(string(configBody)),
 	)
 	configRequest.Header.Set("Content-Type", "application/json")
+	configRequest.Header.Set("X-Service-Host", serviceHost)
+	configRequest.Header.Set("X-Service-Port", servicePort)
 	configRequest.RemoteAddr = "192.0.2.10:43123"
 
 	configRecorder := httptest.NewRecorder()

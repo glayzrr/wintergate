@@ -34,8 +34,8 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 		return fmt.Errorf("%w: http request is required", ErrInvalidRequest)
 	}
 	// RouteTask가 식별한 서비스 이름이 있어야 풀 정책과 트래픽 기록을 적용할 수 있습니다.
-	if strings.TrimSpace(state.Request.Service) == "" {
-		return fmt.Errorf("%w: service is required", ErrInvalidRequest)
+	if strings.TrimSpace(state.Request.ConfigKey) == "" {
+		return fmt.Errorf("%w: config key is required", ErrInvalidRequest)
 	}
 
 	// nginx가 전달한 scheme, host, port를 업스트림 요청 URL로 변환합니다.
@@ -45,7 +45,7 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 	}
 
 	// 커넥션 풀 정책을 적용해 업스트림으로 요청을 전달하고 응답을 클라이언트에 씁니다.
-	if err := pool.HandleRequest(state.Request.Service, upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest, t.recorder); err != nil {
+	if err := pool.HandleRequest(state.Request.ConfigKey, upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest, t.recorder); err != nil {
 		return fmt.Errorf("handle upstream request: %w", err)
 	}
 

@@ -2,7 +2,6 @@ package pool
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,9 +12,9 @@ const defaultWindow = time.Minute
 // DoneFunc 요청 처리가 끝났을 때 호출해 트래픽 기록을 마무리합니다.
 type DoneFunc func()
 
-// Status 특정 서비스의 현재 트래픽 상태입니다.
+// Status 특정 설정 키의 현재 트래픽 상태입니다.
 type Status struct {
-	Service          string
+	ConfigKey        string
 	InFlight         int64
 	StartedRequests  uint64
 	FinishedRequests uint64
@@ -26,15 +25,15 @@ type Status struct {
 	LastSeenAt       time.Time
 }
 
-// Recorder 서비스별 트래픽 상태를 기록합니다.
+// Recorder 설정 키별 트래픽 상태를 기록합니다.
 type Recorder struct {
 	clock func() time.Time
 
 	// recoder가 관찰할 시간의 범위를 의미합니다.
 	window   time.Duration
-	services map[string]*serviceRecord
+	records map[string]*serviceRecord
 
-	// services map의 동시 조회와 서비스별 record 생성을 보호합니다.
+	// records map의 동시 조회와 설정 키별 record 생성을 보호합니다.
 	mu sync.RWMutex
 }
 
@@ -68,33 +67,32 @@ func DefaultRecorder() *Recorder {
 	return defaultRecorder
 }
 
-// StartRecord 기본 Recorder에 서비스 요청 시작을 기록하고 완료 함수를 반환합니다.
-func StartRecord(service string) DoneFunc {
-	return DefaultRecorder().Start(service)
+// StartRecord 기본 Recorder에 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
+func StartRecord(configKey string) DoneFunc {
+	return DefaultRecorder().Start(configKey)
 }
 
-// StatusFor 기본 Recorder에서 서비스 트래픽 상태를 반환합니다.
-func StatusFor(service string) (Status, error) {
-	return DefaultRecorder().StatusFor(service)
+// StatusFor 기본 Recorder에서 설정 키별 트래픽 상태를 반환합니다.
+func StatusFor(configKey string) (Status, error) {
+	return DefaultRecorder().StatusFor(configKey)
 }
 
-// Start 서비스 요청 시작을 기록하고 완료 함수를 반환합니다.
-func (r *Recorder) Start(service string) DoneFunc {
+// Start 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
+func (r *Recorder) Start(configKey string) DoneFunc {
 	if r == nil {
 		return noopDone
 	}
 
-	// 서비스 이름이 없으면 트래픽을 분류할 기준이 없으므로 기록하지 않습니다.
-	normalizedService := normalizeService(service)
-	if normalizedService == "" {
+	normalizedConfigKey := normalizeConfigKey(configKey)
+	if normalizedConfigKey == "" {
 		return noopDone
 	}
 
 	// 시작 시각은 done 호출 시 latency 계산에 사용합니다.
 	startedAt := r.now()
 
-	// 서비스별 record를 가져온 뒤 hot path 카운터는 atomic으로 갱신합니다.
-	record := r.recordFor(normalizedService)
+	// 설정 키별 record를 가져온 뒤 hot path 카운터는 atomic으로 갱신합니다.
+	record := r.recordFor(normalizedConfigKey)
 	record.inFlight.Add(1)
 	record.startedRequests.Add(1)
 	record.lastSeenNano.Store(startedAt.UnixNano())
@@ -109,29 +107,29 @@ func (r *Recorder) Start(service string) DoneFunc {
 	}
 }
 
-// StatusFor 서비스 트래픽 상태의 현재 값을 반환합니다.
-func (r *Recorder) StatusFor(service string) (Status, error) {
+// StatusFor 설정 키별 트래픽 상태의 현재 값을 반환합니다.
+func (r *Recorder) StatusFor(configKey string) (Status, error) {
 	if r == nil {
 		return Status{}, fmt.Errorf("%w: recorder is nil", ErrStatusNotFound)
 	}
 
-	normalizedService := normalizeService(service)
-	if normalizedService == "" {
-		return Status{}, fmt.Errorf("%w: service is required", ErrInvalidService)
+	normalizedConfigKey := normalizeConfigKey(configKey)
+	if normalizedConfigKey == "" {
+		return Status{}, fmt.Errorf("%w: config key is required", ErrInvalidService)
 	}
 
 	now := r.now()
 
-	record, found := r.findRecord(normalizedService)
+	record, found := r.findRecord(normalizedConfigKey)
 	if !found {
-		return Status{}, fmt.Errorf("%w: %s", ErrStatusNotFound, normalizedService)
+		return Status{}, fmt.Errorf("%w: %s", ErrStatusNotFound, normalizedConfigKey)
 	}
 
 	requestsInWindow := record.requestsInWindow(now)
 	finishedRequests := record.finishedRequests.Load()
 	totalLatencyNano := record.totalLatencyNano.Load()
 	status := Status{
-		Service:          normalizedService,
+		ConfigKey:        normalizedConfigKey,
 		InFlight:         record.inFlight.Load(),
 		StartedRequests:  record.startedRequests.Load(),
 		FinishedRequests: finishedRequests,
@@ -161,7 +159,7 @@ func newRecorder(clock func() time.Time, window time.Duration) *Recorder {
 	return &Recorder{
 		clock:    clock,
 		window:   window.Truncate(time.Second),
-		services: make(map[string]*serviceRecord),
+		records:  make(map[string]*serviceRecord),
 	}
 }
 
@@ -178,18 +176,18 @@ func (r *Recorder) finish(record *serviceRecord, startedAt time.Time) {
 	record.lastSeenNano.Store(finishedAt.UnixNano())
 }
 
-func (r *Recorder) recordFor(service string) *serviceRecord {
+func (r *Recorder) recordFor(configKey string) *serviceRecord {
 	// 대부분의 요청은 이미 생성된 record를 읽기만 하므로 read lock 경로를 먼저 탑니다.
-	if record, found := r.findRecord(service); found {
+	if record, found := r.findRecord(configKey); found {
 		return record
 	}
 
-	// record가 없을 때만 write lock을 잡아 서비스별 저장소를 생성합니다.
+	// record가 없을 때만 write lock을 잡아 설정 키별 저장소를 생성합니다.
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// lock 대기 중 다른 고루틴이 먼저 만들 수 있으므로 한 번 더 확인합니다.
-	record, found := r.services[service]
+	record, found := r.records[configKey]
 	if found {
 		return record
 	}
@@ -198,16 +196,16 @@ func (r *Recorder) recordFor(service string) *serviceRecord {
 	record = &serviceRecord{
 		buckets: make([]bucket, bucketCount(r.window)),
 	}
-	r.services[service] = record
+	r.records[configKey] = record
 
 	return record
 }
 
-func (r *Recorder) findRecord(service string) (*serviceRecord, bool) {
+func (r *Recorder) findRecord(configKey string) (*serviceRecord, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	record, found := r.services[service]
+	record, found := r.records[configKey]
 
 	return record, found
 }
@@ -278,10 +276,6 @@ func bucketIndex(unixSecond int64, bucketCount int) int {
 	}
 
 	return index
-}
-
-func normalizeService(service string) string {
-	return strings.TrimSpace(service)
 }
 
 func unixNanoToTime(unixNano int64) time.Time {
