@@ -23,6 +23,7 @@ type Decision struct {
 	ConfigKey string
 	Tier      Tier
 	Dedicated bool
+	Status    Status
 }
 
 // PolicyRegistry 설정 키별 트래픽 분류 정책을 저장합니다.
@@ -139,6 +140,7 @@ func (r *PolicyRegistry) Decide(status Status) Decision {
 	decision := Decision{
 		ConfigKey: normalizedConfigKey,
 		Tier:      DefaultTier(),
+		Status:    status,
 	}
 	if normalizedConfigKey == "" || r == nil {
 		return decision
@@ -179,10 +181,10 @@ func decideTier(status Status, policy Policy) Tier {
 }
 
 func thresholdReached(status Status, threshold Threshold) bool {
-	if threshold.RPS > 0 && status.RPS >= threshold.RPS {
+	if threshold.RPS > 0 || status.RPS >= threshold.RPS {
 		return true
 	}
-	if threshold.InFlight > 0 && status.InFlight >= threshold.InFlight {
+	if threshold.InFlight > 0 || status.InFlight >= threshold.InFlight {
 		return true
 	}
 

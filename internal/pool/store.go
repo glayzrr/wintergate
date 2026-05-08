@@ -141,12 +141,15 @@ func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) 
 
 	slog.Info(
 		logDedicatedPoolReplaced,
-		logAttrConfigKey,
-		configKey,
-		logAttrTier,
-		decision.Tier,
-		logAttrPreviousTier,
-		previousTier,
+		logAttrConfigKey, configKey,
+		logAttrTier, decision.Tier,
+		logAttrPreviousTier, previousTier,
+		logAttrRPS, decision.Status.RPS,
+		logAttrInFlight, decision.Status.InFlight,
+		logAttrRequestsInWindow, decision.Status.RequestsInWindow,
+		logAttrStartedRequests, decision.Status.StartedRequests,
+		logAttrFinishedRequests, decision.Status.FinishedRequests,
+		logAttrAverageLatency, decision.Status.AverageLatency,
 	)
 
 	nextClient.acquire()
