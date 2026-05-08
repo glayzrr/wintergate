@@ -121,8 +121,8 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 
 	if err := RegisterPolicies([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{InFlight: 1},
+			ConfigKey: "order-service",
+			Hot:       Threshold{InFlight: 1},
 		},
 	}); err != nil {
 		t.Fatalf("RegisterPolicies returned error: %v", err)
@@ -173,8 +173,8 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 	}
 
 	decision := Decision{
-		Service: "order-service",
-		Tier:    TierNormal,
+		ConfigKey: "order-service",
+		Tier:      TierNormal,
 	}
 
 	firstClient := mustClient(t, store, decision)
@@ -189,12 +189,12 @@ func TestClientStoreUsesSharedTierClients(t *testing.T) {
 	store := newClientStore()
 
 	normalClient := mustClient(t, store, Decision{
-		Service: "order-service",
-		Tier:    TierNormal,
+		ConfigKey: "order-service",
+		Tier:      TierNormal,
 	})
 	hotClient := mustClient(t, store, Decision{
-		Service: "payment-service",
-		Tier:    TierHot,
+		ConfigKey: "payment-service",
+		Tier:      TierHot,
 	})
 
 	if normalClient == hotClient {
@@ -209,12 +209,12 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 	store := newClientStore()
 
 	orderClient := mustClient(t, store, Decision{
-		Service:   "order-service",
+		ConfigKey: "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
 	paymentClient := mustClient(t, store, Decision{
-		Service:   "payment-service",
+		ConfigKey: "payment-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
@@ -232,12 +232,12 @@ func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 	store := newClientStore()
 
 	hotClient := mustClient(t, store, Decision{
-		Service:   "order-service",
+		ConfigKey: "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
 	superClient := mustClient(t, store, Decision{
-		Service:   "order-service",
+		ConfigKey: "order-service",
 		Tier:      TierSuper,
 		Dedicated: true,
 	})
@@ -257,7 +257,7 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	store := newClientStore()
 
 	dedicatedClient := mustClient(t, store, Decision{
-		Service:   "order-service",
+		ConfigKey: "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
@@ -267,8 +267,8 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	}
 
 	client := mustClient(t, store, Decision{
-		Service: "order-service",
-		Tier:    TierHot,
+		ConfigKey: "order-service",
+		Tier:      TierHot,
 	})
 
 	if client.client != sharedHotClient {
@@ -340,7 +340,7 @@ func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *ca
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	client := store.dedicated[normalizeService(service)]
+	client := store.dedicated[normalizeConfigKey(service)]
 	if client == nil {
 		t.Fatalf("dedicated client for %q not found", service)
 	}

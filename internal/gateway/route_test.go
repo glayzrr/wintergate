@@ -80,8 +80,8 @@ func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
 		t.Fatal("Run returned nil error")
 	}
 
-	if !errors.Is(err, routeconfig.ErrServiceNotFound) {
-		t.Fatalf("error = %v, want ErrServiceNotFound", err)
+	if !errors.Is(err, routeconfig.ErrConfigNotFound) {
+		t.Fatalf("error = %v, want ErrConfigNotFound", err)
 	}
 }
 

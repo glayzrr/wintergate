@@ -2,7 +2,6 @@ package record
 
 import (
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -11,7 +10,7 @@ import (
 
 // PoolObservation 커넥션 풀 사용 시작 정보입니다.
 type PoolObservation struct {
-	Service   string
+	ConfigKey string
 	Tier      string
 	Dedicated bool
 }
@@ -124,7 +123,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 
 func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 	startedAt := time.Now()
-	service := normalizeMetricValue(observation.Service)
+	service := normalizeMetricValue(observation.ConfigKey)
 	tier := normalizeMetricValue(observation.Tier)
 	pool := poolFor(observation.Dedicated)
 
@@ -149,7 +148,7 @@ func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 }
 
 func (r *PoolRecorder) recordConnection(observation PoolObservation, connection ConnectionObservation) {
-	service := normalizeMetricValue(observation.Service)
+	service := normalizeMetricValue(observation.ConfigKey)
 	tier := normalizeMetricValue(observation.Tier)
 	pool := poolFor(observation.Dedicated)
 
@@ -172,15 +171,6 @@ func connectionEventFor(connection ConnectionObservation) string {
 	default:
 		return connectionEventNew
 	}
-}
-
-func normalizeMetricValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return unknown
-	}
-
-	return value
 }
 
 func poolFor(dedicated bool) string {

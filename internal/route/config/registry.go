@@ -2,8 +2,9 @@ package config
 
 import (
 	"fmt"
-	"strings"
 	"sync"
+
+	"wintergate/internal/route"
 )
 
 // Registry 라우팅 런타임 설정과 엔트리를 메모리에 보관합니다.
@@ -31,26 +32,26 @@ func (r *Registry) Register(cfg Config) error {
 		return fmt.Errorf("%w: entries are required", ErrInvalidConfig)
 	}
 
-	key := strings.TrimSpace(cfg.Key)
+	key := route.NormalizeConfigKey(cfg.Key)
 	if key == "" {
 		return fmt.Errorf("%w: config key is required", ErrInvalidConfig)
 	}
 
 	registeredRoutes := routes{}
 	for _, entry := range cfg.Entries {
-		path := strings.TrimSpace(entry.Path)
+		path := route.NormalizeHTTPPath(entry.Path)
 		if path == "" {
 			return fmt.Errorf("%w: path is required", ErrInvalidConfig)
 		}
 
-		httpMethod := strings.ToUpper(strings.TrimSpace(entry.HttpMethod))
+		httpMethod := route.NormalizeHTTPMethod(entry.HttpMethod)
 		if httpMethod == "" {
 			return fmt.Errorf("%w: http method is required for config key %q", ErrInvalidConfig, key)
 		}
 
-		roles, err := normalizedRoles(entry.Roles)
-		if err != nil {
-			return fmt.Errorf("normalize roles: %w", err)
+		roles, ok := route.NormalizeRoles(entry.Roles)
+		if !ok {
+			return fmt.Errorf("%w: role is required", ErrInvalidConfig)
 		}
 
 		if hasRouteInfo(registeredRoutes.infos, path, httpMethod) {
@@ -74,7 +75,7 @@ func (r *Registry) Register(cfg Config) error {
 
 // RouteInfos 지정한 설정 키에 대응하는 라우팅 정보 목록을 반환합니다.
 func (r *Registry) RouteInfos(configKey string) ([]RouteInfo, error) {
-	key := strings.TrimSpace(configKey)
+	key := route.NormalizeConfigKey(configKey)
 	if key == "" {
 		return nil, fmt.Errorf("%w: config key is required", ErrInvalidConfig)
 	}
@@ -82,30 +83,12 @@ func (r *Registry) RouteInfos(configKey string) ([]RouteInfo, error) {
 	r.routeMu.RLock()
 	defer r.routeMu.RUnlock()
 
-	serviceRoutes, found := r.routes[key]
+	configRoutes, found := r.routes[key]
 	if !found {
-		return nil, fmt.Errorf("%w: %s", ErrServiceNotFound, key)
+		return nil, fmt.Errorf("%w: %s", ErrConfigNotFound, key)
 	}
 
-	return toRouteInfos(serviceRoutes.infos), nil
-}
-
-func normalizedRoles(roles []string) ([]string, error) {
-	if len(roles) == 0 {
-		return nil, nil
-	}
-
-	normalized := make([]string, 0, len(roles))
-	for _, role := range roles {
-		trimmedRole := strings.TrimSpace(role)
-		if trimmedRole == "" {
-			return nil, fmt.Errorf("%w: role is required", ErrInvalidConfig)
-		}
-
-		normalized = append(normalized, trimmedRole)
-	}
-
-	return normalized, nil
+	return toRouteInfos(configRoutes.infos), nil
 }
 
 func hasRouteInfo(routeInfos []RegistryRouteInfo, path string, httpMethod string) bool {

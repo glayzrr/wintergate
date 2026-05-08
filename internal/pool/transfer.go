@@ -40,13 +40,13 @@ func makePool(config Config) (*http.Transport, error) {
 	return transport, nil
 }
 
-// HandleRequest 서비스 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
-func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.Request, recorder *metricrecord.Recorder) error {
-	// 요청 시작과 종료 시점을 기록해 서비스별 트래픽 상태를 갱신합니다.
-	doneFunc := StartRecord(serviceName)
+// HandleRequest 설정 키의 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
+func HandleRequest(configKey, address string, w http.ResponseWriter, r *http.Request, recorder *metricrecord.Recorder) error {
+	// 요청 시작과 종료 시점을 기록해 설정 키별 트래픽 상태를 갱신합니다.
+	doneFunc := StartRecord(configKey)
 	defer doneFunc()
 
-	status, err := StatusFor(serviceName)
+	status, err := StatusFor(configKey)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func HandleRequest(serviceName, address string, w http.ResponseWriter, r *http.R
 
 	// pool 선택 결과를 한 번 만들어 요청 메트릭과 connection trace가 같은 label을 사용하게 합니다.
 	poolObservation := metricrecord.PoolObservation{
-		Service:   decision.Service,
+		ConfigKey: decision.ConfigKey,
 		Tier:      string(decision.Tier),
 		Dedicated: decision.Dedicated,
 	}

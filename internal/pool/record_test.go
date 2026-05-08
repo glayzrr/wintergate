@@ -17,8 +17,8 @@ func TestRecorderStartStoresInFlightRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status returned error: %v", err)
 	}
-	if snapshot.Service != "order-service" {
-		t.Fatalf("snapshot.Service = %q, want %q", snapshot.Service, "order-service")
+	if snapshot.ConfigKey != "order-service" {
+		t.Fatalf("snapshot.ConfigKey = %q, want %q", snapshot.ConfigKey, "order-service")
 	}
 	if snapshot.InFlight != 1 {
 		t.Fatalf("snapshot.InFlight = %d, want %d", snapshot.InFlight, 1)
@@ -60,7 +60,7 @@ func TestRecorderDoneFinishesRequestOnce(t *testing.T) {
 	}
 }
 
-func TestRecorderTracksServicesIndependently(t *testing.T) {
+func TestRecorderTracksConfigKeysIndependently(t *testing.T) {
 	now := time.Unix(100, 0)
 	recorder := newRecorder(func() time.Time { return now }, time.Minute)
 
@@ -117,7 +117,7 @@ func TestRecorderCalculatesRPSFromWindow(t *testing.T) {
 	}
 }
 
-func TestRecorderStartIgnoresBlankService(t *testing.T) {
+func TestRecorderStartIgnoresBlankConfigKey(t *testing.T) {
 	recorder := NewRecorder()
 
 	done := recorder.Start(" ")
@@ -127,12 +127,12 @@ func TestRecorderStartIgnoresBlankService(t *testing.T) {
 	if err == nil {
 		t.Fatal("Status returned nil error")
 	}
-	if !errors.Is(err, ErrInvalidService) {
-		t.Fatalf("error = %v, want ErrInvalidService", err)
+	if !errors.Is(err, ErrInvalidConfigKey) {
+		t.Fatalf("error = %v, want ErrInvalidConfigKey", err)
 	}
 }
 
-func TestRecorderStatusReturnsErrorWhenServiceMissing(t *testing.T) {
+func TestRecorderStatusReturnsErrorWhenConfigKeyMissing(t *testing.T) {
 	recorder := NewRecorder()
 
 	_, err := recorder.StatusFor("missing-service")

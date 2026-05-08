@@ -11,21 +11,21 @@ type Threshold struct {
 	InFlight int64
 }
 
-// Policy 서비스별 트래픽 분류 정책입니다.
+// Policy 설정 키별 트래픽 분류 정책입니다.
 type Policy struct {
-	Service string
-	Hot     Threshold
-	Super   Threshold
+	ConfigKey string
+	Hot       Threshold
+	Super     Threshold
 }
 
 // Decision 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
 type Decision struct {
-	Service   string
+	ConfigKey string
 	Tier      Tier
 	Dedicated bool
 }
 
-// PolicyRegistry 서비스별 트래픽 분류 정책을 저장합니다.
+// PolicyRegistry 설정 키별 트래픽 분류 정책을 저장합니다.
 type PolicyRegistry struct {
 	policies map[string]Policy
 
@@ -47,14 +47,14 @@ func DefaultPolicyRegistry() *PolicyRegistry {
 	return defaultPolicyRegistry
 }
 
-// RegisterPolicies 기본 정책 저장소에 서비스별 정책을 등록합니다.
+// RegisterPolicies 기본 정책 저장소에 설정 키별 정책을 등록합니다.
 func RegisterPolicies(policies []Policy) error {
 	return DefaultPolicyRegistry().Register(policies)
 }
 
-// UnregisterPolicy 기본 정책 저장소에서 서비스별 정책을 제거합니다.
-func UnregisterPolicy(service string) {
-	DefaultPolicyRegistry().Delete(service)
+// UnregisterPolicy 기본 정책 저장소에서 설정 키별 정책을 제거합니다.
+func UnregisterPolicy(configKey string) {
+	DefaultPolicyRegistry().Delete(configKey)
 }
 
 // DecidePolicy 기본 정책 저장소에서 현재 상태에 대한 풀 사용 방식을 결정합니다.
@@ -70,75 +70,83 @@ func (r *PolicyRegistry) Register(policies []Policy) error {
 
 	registeredPolicies := make(map[string]Policy, len(policies))
 	for _, policy := range policies {
-		normalizedPolicy, err := normalizePolicy(policy)
-		if err != nil {
+		normalizedPolicy := policy
+		normalizedPolicy.ConfigKey = normalizeConfigKey(policy.ConfigKey)
+		if normalizedPolicy.ConfigKey == "" {
+			return fmt.Errorf("%w: config key is required", ErrInvalidPolicy)
+		}
+
+		if err := validateThreshold(normalizedPolicy.Hot, "hot"); err != nil {
+			return err
+		}
+		if err := validateThreshold(normalizedPolicy.Super, "super"); err != nil {
 			return err
 		}
 
-		registeredPolicies[normalizedPolicy.Service] = normalizedPolicy
+		registeredPolicies[normalizedPolicy.ConfigKey] = normalizedPolicy
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for service, policy := range registeredPolicies {
-		r.policies[service] = policy
+	for configKey, policy := range registeredPolicies {
+		r.policies[configKey] = policy
 	}
 
 	return nil
 }
 
-// Delete 지정한 서비스의 정책을 제거합니다.
-func (r *PolicyRegistry) Delete(service string) {
+// Delete 지정한 설정 키의 정책을 제거합니다.
+func (r *PolicyRegistry) Delete(configKey string) {
 	if r == nil {
 		return
 	}
 
-	normalizedService := normalizeService(service)
-	if normalizedService == "" {
+	normalizedConfigKey := normalizeConfigKey(configKey)
+	if normalizedConfigKey == "" {
 		return
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	delete(r.policies, normalizedService)
+	delete(r.policies, normalizedConfigKey)
 }
 
-// PolicyFor 서비스별 등록 정책의 사본을 반환합니다.
-func (r *PolicyRegistry) PolicyFor(service string) (Policy, bool) {
+// PolicyFor 설정 키별 등록 정책의 사본을 반환합니다.
+func (r *PolicyRegistry) PolicyFor(configKey string) (Policy, bool) {
 	if r == nil {
 		return Policy{}, false
 	}
 
-	normalizedService := normalizeService(service)
-	if normalizedService == "" {
+	normalizedConfigKey := normalizeConfigKey(configKey)
+	if normalizedConfigKey == "" {
 		return Policy{}, false
 	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	policy, found := r.policies[normalizedService]
+	policy, found := r.policies[normalizedConfigKey]
 
 	return policy, found
 }
 
 // Decide 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
 func (r *PolicyRegistry) Decide(status Status) Decision {
-	normalizedService := normalizeService(status.Service)
+	normalizedConfigKey := normalizeConfigKey(status.ConfigKey)
 
 	// TODO 서버 기본 설정에 따라 티어 설정하기
 	decision := Decision{
-		Service: normalizedService,
-		Tier:    TierNormal,
+		ConfigKey: normalizedConfigKey,
+		Tier:      TierSuper,
 	}
-	if normalizedService == "" || r == nil {
+	if normalizedConfigKey == "" || r == nil {
 		return decision
 	}
 
 	// 등록된 정책이 없으면 기본 정책을 반환합니다.
-	policy, found := r.PolicyFor(normalizedService)
+	policy, found := r.PolicyFor(normalizedConfigKey)
 	if !found {
 		return decision
 	}
@@ -147,24 +155,6 @@ func (r *PolicyRegistry) Decide(status Status) Decision {
 	decision.Dedicated = true
 
 	return decision
-}
-
-func normalizePolicy(policy Policy) (Policy, error) {
-	service := normalizeService(policy.Service)
-	if service == "" {
-		return Policy{}, fmt.Errorf("%w: service is required", ErrInvalidPolicy)
-	}
-
-	if err := validateThreshold(policy.Hot, "hot"); err != nil {
-		return Policy{}, err
-	}
-	if err := validateThreshold(policy.Super, "super"); err != nil {
-		return Policy{}, err
-	}
-
-	policy.Service = service
-
-	return policy, nil
 }
 
 func validateThreshold(threshold Threshold, name string) error {

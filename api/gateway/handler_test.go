@@ -289,7 +289,7 @@ func TestReceiveFailure(t *testing.T) {
 	}{
 		{name: "invalid request", err: internalgateway.ErrInvalidRequest, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
 		{name: "invalid route config", err: routeconfig.ErrInvalidConfig, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
-		{name: "service not found", err: routeconfig.ErrServiceNotFound, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
+		{name: "config not found", err: routeconfig.ErrConfigNotFound, statusCode: http.StatusBadRequest, message: responseReceiveFailed},
 		{name: "invalid authorization header", err: internalauth.ErrInvalidAuthorizationHeader, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
 		{name: "invalid audience", err: internalauth.ErrInvalidAudience, statusCode: http.StatusUnauthorized, message: responseUnauthorized},
 		{name: "invalid issuer", err: internalauth.ErrInvalidIssuer, statusCode: http.StatusUnauthorized, message: responseUnauthorized},

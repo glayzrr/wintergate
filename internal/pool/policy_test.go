@@ -9,9 +9,9 @@ func TestPolicyRegistryDecideUsesSharedPoolWhenPolicyMissing(t *testing.T) {
 	registry := NewPolicyRegistry()
 
 	decision := registry.Decide(Status{
-		Service:  "order-service",
-		RPS:      1000,
-		InFlight: 1000,
+		ConfigKey: "order-service",
+		RPS:       1000,
+		InFlight:  1000,
 	})
 
 	if decision.Dedicated {
@@ -23,18 +23,18 @@ func TestPolicyRegistryDecideReturnsDedicatedHotWhenThresholdReached(t *testing.
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{RPS: 100, InFlight: 50},
-			Super:   Threshold{RPS: 500, InFlight: 200},
+			ConfigKey: "order-service",
+			Hot:       Threshold{RPS: 100, InFlight: 50},
+			Super:     Threshold{RPS: 500, InFlight: 200},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
 	decision := registry.Decide(Status{
-		Service:  "order-service",
-		RPS:      100,
-		InFlight: 10,
+		ConfigKey: "order-service",
+		RPS:       100,
+		InFlight:  10,
 	})
 
 	if decision.Tier != TierHot {
@@ -49,18 +49,18 @@ func TestPolicyRegistryDecideReturnsDedicatedSuperWhenThresholdReached(t *testin
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{RPS: 100, InFlight: 50},
-			Super:   Threshold{RPS: 500, InFlight: 200},
+			ConfigKey: "order-service",
+			Hot:       Threshold{RPS: 100, InFlight: 50},
+			Super:     Threshold{RPS: 500, InFlight: 200},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
 	decision := registry.Decide(Status{
-		Service:  "order-service",
-		RPS:      1,
-		InFlight: 200,
+		ConfigKey: "order-service",
+		RPS:       1,
+		InFlight:  200,
 	})
 
 	if decision.Tier != TierSuper {
@@ -75,17 +75,17 @@ func TestPolicyRegistryDecideUsesDedicatedPoolWhenPolicyConfigured(t *testing.T)
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{RPS: 100},
-			Super:   Threshold{RPS: 500},
+			ConfigKey: "order-service",
+			Hot:       Threshold{RPS: 100},
+			Super:     Threshold{RPS: 500},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
 	decision := registry.Decide(Status{
-		Service: "order-service",
-		RPS:     500,
+		ConfigKey: "order-service",
+		RPS:       500,
 	})
 
 	if decision.Tier != TierSuper {
@@ -100,8 +100,8 @@ func TestPolicyRegistryRegisterStoresAndReplacesPolicies(t *testing.T) {
 	registry := NewPolicyRegistry()
 	if err := registry.Register([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{RPS: 100},
+			ConfigKey: "order-service",
+			Hot:       Threshold{RPS: 100},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -109,12 +109,12 @@ func TestPolicyRegistryRegisterStoresAndReplacesPolicies(t *testing.T) {
 
 	if err := registry.Register([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{RPS: 200},
+			ConfigKey: "order-service",
+			Hot:       Threshold{RPS: 200},
 		},
 		{
-			Service: "payment-service",
-			Hot:     Threshold{RPS: 100},
+			ConfigKey: "payment-service",
+			Hot:       Threshold{RPS: 100},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -132,17 +132,17 @@ func TestPolicyRegistryRegisterStoresAndReplacesPolicies(t *testing.T) {
 	}
 }
 
-func TestPolicyRegistryRegisterUsesLastPolicyWhenServiceDuplicated(t *testing.T) {
+func TestPolicyRegistryRegisterUsesLastPolicyWhenConfigKeyDuplicated(t *testing.T) {
 	registry := NewPolicyRegistry()
 
 	if err := registry.Register([]Policy{
 		{
-			Service: "order-service",
-			Hot:     Threshold{RPS: 100},
+			ConfigKey: "order-service",
+			Hot:       Threshold{RPS: 100},
 		},
 		{
-			Service: " order-service ",
-			Hot:     Threshold{RPS: 200},
+			ConfigKey: " order-service ",
+			Hot:       Threshold{RPS: 200},
 		},
 	}); err != nil {
 		t.Fatalf("Register returned error: %v", err)
@@ -165,13 +165,13 @@ func TestPolicyRegistryRegisterReturnsErrorWhenInvalid(t *testing.T) {
 		{
 			name: "blank service",
 			policies: []Policy{
-				{Service: " "},
+				{ConfigKey: " "},
 			},
 		},
 		{
 			name: "negative rps",
 			policies: []Policy{
-				{Service: "order-service", Hot: Threshold{RPS: -1}},
+				{ConfigKey: "order-service", Hot: Threshold{RPS: -1}},
 			},
 		},
 	}

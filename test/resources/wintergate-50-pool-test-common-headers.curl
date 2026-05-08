@@ -1,2 +1,0 @@
-header = "X-Service-Scheme: http"
-header = "X-Service-Host: 127.0.0.1"

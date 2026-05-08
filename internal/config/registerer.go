@@ -46,7 +46,7 @@ func (r *Registerer) Register(settings Settings, host, port string) error {
 
 	configKey, err := utils.ConfigKey(host, port)
 	if err != nil {
-		return fmt.Errorf("%w: service address: %w", ErrInvalidSettings, err)
+		return fmt.Errorf("%w: config address: %w", ErrInvalidSettings, err)
 	}
 
 	authRuntimeConfig, err := r.registerAuthConfig(settings.Global.Auth)
@@ -123,7 +123,7 @@ func (r *Registerer) registerRouteConfig(configKey string, endpoints []EndpointS
 
 func (r *Registerer) poolPolicy(configKey string, threshold ThresholdSettings) pool.Policy {
 	return pool.Policy{
-		Service: configKey,
+		ConfigKey: configKey,
 		Hot: pool.Threshold{
 			RPS:      threshold.Hot.RPS,
 			InFlight: threshold.Hot.InFlight,

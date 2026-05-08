@@ -3,7 +3,6 @@ package pool
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 )
 
@@ -40,11 +39,11 @@ func (s *clientStore) ClientFor(decision Decision) (*cachedClient, error) {
 		return nil, fmt.Errorf("%w: client store is nil", ErrInvalidConfig)
 	}
 
-	tier, err := normalizeDecisionTier(decision.Tier)
+	normalizedTier, err := normalizeTier(decision.Tier)
 	if err != nil {
 		return nil, err
 	}
-	decision.Tier = tier
+	decision.Tier = normalizedTier
 
 	if !decision.Dedicated {
 		return s.sharedClient(decision)
@@ -54,13 +53,13 @@ func (s *clientStore) ClientFor(decision Decision) (*cachedClient, error) {
 }
 
 func (s *clientStore) sharedClient(decision Decision) (*cachedClient, error) {
-	service := normalizeService(decision.Service)
+	configKey := normalizeConfigKey(decision.ConfigKey)
 
 	// 전용 client가 없는 서비스는 read lock만으로 shared client를 바로 반환합니다.
 	s.mu.RLock()
 	cached := s.shared[decision.Tier]
-	_, hasDedicated := s.dedicated[service]
-	if cached != nil && (!hasDedicated || service == "") {
+	_, hasDedicated := s.dedicated[configKey]
+	if cached != nil && (!hasDedicated || configKey == "") {
 		cached.acquire()
 		s.mu.RUnlock()
 		return cached, nil
@@ -72,10 +71,10 @@ func (s *clientStore) sharedClient(decision Decision) (*cachedClient, error) {
 	defer s.mu.Unlock()
 
 	// Dedicated=false 판단이 내려진 서비스는 전용 풀을 해제하고 shared 풀로 합류합니다.
-	if service != "" {
-		if oldClient, found := s.dedicated[service]; found {
+	if configKey != "" {
+		if oldClient, found := s.dedicated[configKey]; found {
 			oldClient.retire()
-			delete(s.dedicated, service)
+			delete(s.dedicated, configKey)
 		}
 	}
 
@@ -95,14 +94,14 @@ func (s *clientStore) sharedClient(decision Decision) (*cachedClient, error) {
 }
 
 func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) {
-	service := normalizeService(decision.Service)
-	if service == "" {
-		return nil, fmt.Errorf("%w: service is required for dedicated pool", ErrInvalidService)
+	configKey := normalizeConfigKey(decision.ConfigKey)
+	if configKey == "" {
+		return nil, fmt.Errorf("%w: config key is required for dedicated pool", ErrInvalidConfigKey)
 	}
 
 	// 이미 같은 tier의 전용 client가 있으면 read lock만으로 재사용합니다.
 	s.mu.RLock()
-	cached := s.dedicated[service]
+	cached := s.dedicated[configKey]
 	if cached != nil && cached.tier == decision.Tier {
 		cached.acquire()
 		s.mu.RUnlock()
@@ -115,7 +114,7 @@ func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) 
 	defer s.mu.Unlock()
 
 	// lock 대기 중 다른 고루틴이 같은 tier client를 만들었을 수 있어 다시 확인합니다.
-	cached = s.dedicated[service]
+	cached = s.dedicated[configKey]
 	if cached != nil && cached.tier == decision.Tier {
 		cached.acquire()
 		return cached, nil
@@ -131,23 +130,10 @@ func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) 
 	if cached != nil {
 		cached.retire()
 	}
-	s.dedicated[service] = nextClient
+	s.dedicated[configKey] = nextClient
 
 	nextClient.acquire()
 	return nextClient, nil
-}
-
-func normalizeDecisionTier(tier Tier) (Tier, error) {
-	if strings.TrimSpace(string(tier)) == "" {
-		return TierNormal, nil
-	}
-
-	normalizedTier, err := normalizeTier(tier)
-	if err != nil {
-		return "", err
-	}
-
-	return normalizedTier, nil
 }
 
 func (s *clientStore) count() (int, int) {
@@ -161,7 +147,7 @@ func (s *clientStore) count() (int, int) {
 	return len(s.shared), len(s.dedicated)
 }
 
-func (s *clientStore) dedicatedTier(service string) (Tier, bool) {
+func (s *clientStore) dedicatedTier(configKey string) (Tier, bool) {
 	if s == nil {
 		return "", false
 	}
@@ -169,7 +155,7 @@ func (s *clientStore) dedicatedTier(service string) (Tier, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	cached := s.dedicated[normalizeService(service)]
+	cached := s.dedicated[normalizeConfigKey(configKey)]
 	if cached == nil {
 		return "", false
 	}

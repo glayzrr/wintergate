@@ -188,9 +188,9 @@ func TestRegistryRouteInfosReturnsErrorWhenConfigKeyBlankOrMissing(t *testing.T)
 	}
 
 	if _, err := registry.RouteInfos("missing.local:8080"); err == nil {
-		t.Fatal("RouteInfos returned nil error for missing service")
-	} else if !errors.Is(err, ErrServiceNotFound) {
-		t.Fatalf("error = %v, want ErrServiceNotFound", err)
+		t.Fatal("RouteInfos returned nil error for missing config")
+	} else if !errors.Is(err, ErrConfigNotFound) {
+		t.Fatalf("error = %v, want ErrConfigNotFound", err)
 	}
 }
 

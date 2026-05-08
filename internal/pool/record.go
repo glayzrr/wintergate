@@ -30,14 +30,14 @@ type Recorder struct {
 	clock func() time.Time
 
 	// recoder가 관찰할 시간의 범위를 의미합니다.
-	window   time.Duration
-	records map[string]*serviceRecord
+	window  time.Duration
+	records map[string]*configRecord
 
 	// records map의 동시 조회와 설정 키별 record 생성을 보호합니다.
 	mu sync.RWMutex
 }
 
-type serviceRecord struct {
+type configRecord struct {
 	inFlight         atomic.Int64
 	startedRequests  atomic.Uint64
 	finishedRequests atomic.Uint64
@@ -115,7 +115,7 @@ func (r *Recorder) StatusFor(configKey string) (Status, error) {
 
 	normalizedConfigKey := normalizeConfigKey(configKey)
 	if normalizedConfigKey == "" {
-		return Status{}, fmt.Errorf("%w: config key is required", ErrInvalidService)
+		return Status{}, fmt.Errorf("%w: config key is required", ErrInvalidConfigKey)
 	}
 
 	now := r.now()
@@ -157,13 +157,13 @@ func newRecorder(clock func() time.Time, window time.Duration) *Recorder {
 	}
 
 	return &Recorder{
-		clock:    clock,
-		window:   window.Truncate(time.Second),
-		records:  make(map[string]*serviceRecord),
+		clock:   clock,
+		window:  window.Truncate(time.Second),
+		records: make(map[string]*configRecord),
 	}
 }
 
-func (r *Recorder) finish(record *serviceRecord, startedAt time.Time) {
+func (r *Recorder) finish(record *configRecord, startedAt time.Time) {
 	finishedAt := r.now()
 	latency := finishedAt.Sub(startedAt)
 	if latency < 0 {
@@ -176,7 +176,7 @@ func (r *Recorder) finish(record *serviceRecord, startedAt time.Time) {
 	record.lastSeenNano.Store(finishedAt.UnixNano())
 }
 
-func (r *Recorder) recordFor(configKey string) *serviceRecord {
+func (r *Recorder) recordFor(configKey string) *configRecord {
 	// 대부분의 요청은 이미 생성된 record를 읽기만 하므로 read lock 경로를 먼저 탑니다.
 	if record, found := r.findRecord(configKey); found {
 		return record
@@ -193,7 +193,7 @@ func (r *Recorder) recordFor(configKey string) *serviceRecord {
 	}
 
 	// RPS 계산은 고정 크기 ring bucket을 사용해 요청 수와 무관하게 메모리를 제한합니다.
-	record = &serviceRecord{
+	record = &configRecord{
 		buckets: make([]bucket, bucketCount(r.window)),
 	}
 	r.records[configKey] = record
@@ -201,7 +201,7 @@ func (r *Recorder) recordFor(configKey string) *serviceRecord {
 	return record
 }
 
-func (r *Recorder) findRecord(configKey string) (*serviceRecord, bool) {
+func (r *Recorder) findRecord(configKey string) (*configRecord, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -214,7 +214,7 @@ func (r *Recorder) now() time.Time {
 	return r.clock()
 }
 
-func (r *serviceRecord) bucketAdd(startedAt time.Time) {
+func (r *configRecord) bucketAdd(startedAt time.Time) {
 	second := startedAt.Unix()
 	index := bucketIndex(second, len(r.buckets))
 	currentBucket := &r.buckets[index]
@@ -239,7 +239,7 @@ func (r *serviceRecord) bucketAdd(startedAt time.Time) {
 	currentBucket.requests.Add(1)
 }
 
-func (r *serviceRecord) requestsInWindow(now time.Time) uint64 {
+func (r *configRecord) requestsInWindow(now time.Time) uint64 {
 	nowSecond := now.Unix()
 	var total uint64
 	for index := range r.buckets {

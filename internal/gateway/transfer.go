@@ -23,7 +23,7 @@ func NewTransferTask(recorder *metricrecord.Recorder) *TransferTask {
 	}
 }
 
-// Run 현재 요청을 service host와 port로 전달하고 업스트림 응답을 클라이언트에 기록합니다.
+// Run 현재 요청을 업스트림 host와 port로 전달하고 업스트림 응답을 클라이언트에 기록합니다.
 func (t *TransferTask) Run(_ context.Context, state *State) error {
 	// 업스트림 응답을 그대로 기록해야 하므로 원본 ResponseWriter가 필요합니다.
 	if state.Request.ResponseWriter == nil {
@@ -33,7 +33,7 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 	if state.Request.HTTPRequest == nil {
 		return fmt.Errorf("%w: http request is required", ErrInvalidRequest)
 	}
-	// RouteTask가 식별한 서비스 이름이 있어야 풀 정책과 트래픽 기록을 적용할 수 있습니다.
+	// RouteTask가 식별한 설정 키가 있어야 풀 정책과 트래픽 기록을 적용할 수 있습니다.
 	if strings.TrimSpace(state.Request.ConfigKey) == "" {
 		return fmt.Errorf("%w: config key is required", ErrInvalidRequest)
 	}

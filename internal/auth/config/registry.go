@@ -156,7 +156,3 @@ func (r *Registry) PublicKeyFor(configKey, kid string) (*rsa.PublicKey, error) {
 
 	return publicKey, nil
 }
-
-func normalizeConfigKey(configKey string) string {
-	return strings.ToLower(strings.TrimSpace(configKey))
-}

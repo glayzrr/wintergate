@@ -2,7 +2,6 @@ package pool
 
 import (
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -64,18 +63,4 @@ func ConfigFor(tier Tier) (Config, error) {
 	}
 
 	return config, nil
-}
-
-func normalizeTier(tier Tier) (Tier, error) {
-	trimmedTier := strings.ToLower(strings.TrimSpace(string(tier)))
-	if trimmedTier == "" {
-		return TierNormal, nil
-	}
-
-	switch Tier(trimmedTier) {
-	case TierNormal, TierHot, TierSuper:
-		return Tier(trimmedTier), nil
-	default:
-		return "", fmt.Errorf("%w: unsupported tier %q", ErrInvalidConfig, tier)
-	}
 }
