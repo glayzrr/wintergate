@@ -779,7 +779,9 @@ import "wintergate/internal/pool"
 ## Index
 
 - [Variables](<#variables>)
+- [func Configure\(configs map\[Tier\]Config, tier Tier\) error](<#Configure>)
 - [func HandleRequest\(configKey, address string, w http.ResponseWriter, r \*http.Request, recorder \*metricrecord.Recorder\) error](<#HandleRequest>)
+- [func LoadConfig\(path string\) error](<#LoadConfig>)
 - [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
 - [func RegisterPolicies\(policies \[\]Policy\) error](<#RegisterPolicies>)
 - [func UnregisterPolicy\(configKey string\)](<#UnregisterPolicy>)
@@ -806,6 +808,7 @@ import "wintergate/internal/pool"
   - [func StatusFor\(configKey string\) \(Status, error\)](<#StatusFor>)
 - [type Threshold](<#Threshold>)
 - [type Tier](<#Tier>)
+  - [func DefaultTier\(\) Tier](<#DefaultTier>)
 
 
 ## Variables
@@ -821,6 +824,15 @@ var (
 )
 ```
 
+<a name="Configure"></a>
+## func Configure
+
+```go
+func Configure(configs map[Tier]Config, tier Tier) error
+```
+
+Configure 서버 시작 시 읽은 커넥션 풀 설정을 기본 설정으로 반영합니다.
+
 <a name="HandleRequest"></a>
 ## func HandleRequest
 
@@ -829,6 +841,15 @@ func HandleRequest(configKey, address string, w http.ResponseWriter, r *http.Req
 ```
 
 HandleRequest 설정 키의 트래픽 상태에 맞는 커넥션 풀로 요청을 업스트림에 전달합니다.
+
+<a name="LoadConfig"></a>
+## func LoadConfig
+
+```go
+func LoadConfig(path string) error
+```
+
+LoadConfig 설정 파일의 pool 설정을 기본 커넥션 풀 설정으로 반영합니다.
 
 <a name="NewTransport"></a>
 ## func NewTransport
@@ -1110,6 +1131,15 @@ const (
     TierSuper Tier = "super"
 )
 ```
+
+<a name="DefaultTier"></a>
+### func DefaultTier
+
+```go
+func DefaultTier() Tier
+```
+
+DefaultTier 설정 파일에서 읽은 기본 공유 풀 티어를 반환합니다.
 
 # route
 
