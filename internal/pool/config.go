@@ -20,9 +20,9 @@ type Config struct {
 var defaultConfigs = map[Tier]Config{
 	TierNormal: {
 		Tier:                  TierNormal,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   2,
-		MaxConnsPerHost:       0,
+		MaxIdleConns:          1024,
+		MaxIdleConnsPerHost:   512,
+		MaxConnsPerHost:       1024,
 		IdleConnTimeout:       90 * time.Second,
 		ResponseHeaderTimeout: 0,
 		TLSHandshakeTimeout:   10 * time.Second,
@@ -30,9 +30,9 @@ var defaultConfigs = map[Tier]Config{
 	},
 	TierHot: {
 		Tier:                  TierHot,
-		MaxIdleConns:          200,
-		MaxIdleConnsPerHost:   4,
-		MaxConnsPerHost:       0,
+		MaxIdleConns:          2048,
+		MaxIdleConnsPerHost:   1024,
+		MaxConnsPerHost:       2048,
 		IdleConnTimeout:       180 * time.Second,
 		ResponseHeaderTimeout: 0,
 		TLSHandshakeTimeout:   20 * time.Second,
@@ -40,9 +40,9 @@ var defaultConfigs = map[Tier]Config{
 	},
 	TierSuper: {
 		Tier:                  TierSuper,
-		MaxIdleConns:          400,
-		MaxIdleConnsPerHost:   8,
-		MaxConnsPerHost:       0,
+		MaxIdleConns:          4096,
+		MaxIdleConnsPerHost:   2048,
+		MaxConnsPerHost:       4096,
 		IdleConnTimeout:       360 * time.Second,
 		ResponseHeaderTimeout: 0,
 		TLSHandshakeTimeout:   40 * time.Second,
