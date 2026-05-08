@@ -2,6 +2,7 @@ package pool
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,6 +53,14 @@ func LoadConfig(path string) error {
 	if err := Configure(poolConfigs, config.Pool.DefaultTier); err != nil {
 		return fmt.Errorf("configure pool: %w", err)
 	}
+
+	slog.Info(
+		logPoolConfigLoaded,
+		logAttrDefaultTier,
+		config.Pool.DefaultTier,
+		logAttrPoolConfigs,
+		poolConfigs,
+	)
 
 	return nil
 }

@@ -2,6 +2,7 @@ package pool
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 )
@@ -131,10 +132,22 @@ func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) 
 	}
 
 	// 기존 전용 client는 새 요청에서 제외하고, 진행 중 요청이 끝난 뒤 idle connection을 닫습니다.
+	previousTier := ""
 	if cached != nil {
+		previousTier = string(cached.tier)
 		cached.retire()
 	}
 	s.dedicated[configKey] = nextClient
+
+	slog.Info(
+		logDedicatedPoolReplaced,
+		logAttrConfigKey,
+		configKey,
+		logAttrTier,
+		decision.Tier,
+		logAttrPreviousTier,
+		previousTier,
+	)
 
 	nextClient.acquire()
 	return nextClient, nil
