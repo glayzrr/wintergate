@@ -42,10 +42,11 @@ func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
 
 	state := &State{
 		Request: Request{
-			Scheme:               trimmedScheme,
-			Host:                 trimmedHost,
-			Port:                 trimmedPort,
-			ConfigKey:            trimmedConfigKey,
+			ID:                  request.ID,
+			Scheme:              trimmedScheme,
+			Host:                trimmedHost,
+			Port:                trimmedPort,
+			ConfigKey:           trimmedConfigKey,
 			Method:              trimmedMethod,
 			Path:                trimmedPath,
 			AuthorizationHeader: request.AuthorizationHeader,

@@ -11,6 +11,7 @@ import (
 	internalgateway "wintergate/internal/gateway"
 	internalmetric "wintergate/internal/metric"
 	metricrecord "wintergate/internal/metric/record"
+	internaltrace "wintergate/internal/trace"
 
 	"github.com/gin-gonic/gin"
 )
@@ -58,12 +59,14 @@ func newRouter() (*gin.Engine, error) {
 
 	// 게이트웨이 요청은 라우팅, 인증, 인가, 업스트림 전송 순서로 처리합니다.
 	routerTask := internalgateway.NewRouteTask(registerer.RouteRegistry())
+	traceTask := internalgateway.NewTraceTask(internaltrace.NewGenerator())
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registerer.AuthRegistry()))
 	authorizeTask := internalgateway.NewAuthorizeTask()
 	transferTask := internalgateway.NewTransferTask(metricRecorder)
 
 	gatewayHandler := gatewayapi.NewHandler(internalgateway.NewOrchestrator(
 		routerTask,
+		traceTask,
 		authenticateTask,
 		authorizeTask,
 		transferTask,

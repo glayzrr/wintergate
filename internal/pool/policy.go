@@ -181,10 +181,10 @@ func decideTier(status Status, policy Policy) Tier {
 }
 
 func thresholdReached(status Status, threshold Threshold) bool {
-	if threshold.RPS > 0 || status.RPS >= threshold.RPS {
+	if threshold.RPS > 0 && status.RPS >= threshold.RPS {
 		return true
 	}
-	if threshold.InFlight > 0 || status.InFlight >= threshold.InFlight {
+	if threshold.InFlight > 0 && status.InFlight >= threshold.InFlight {
 		return true
 	}
 

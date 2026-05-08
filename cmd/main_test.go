@@ -153,6 +153,9 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		if r.URL.Path != "/orders" {
 			t.Errorf("upstream path = %q, want %q", r.URL.Path, "/orders")
 		}
+		if r.Header.Get("X-Request-ID") == "" {
+			t.Error("upstream X-Request-ID is empty")
+		}
 
 		w.WriteHeader(http.StatusAccepted)
 		if _, err := w.Write([]byte("upstream ok")); err != nil {
@@ -233,6 +236,9 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 
 	if recorder.Body.String() != "upstream ok" {
 		t.Fatalf("body = %q, want %q", recorder.Body.String(), "upstream ok")
+	}
+	if recorder.Header().Get("X-Request-ID") == "" {
+		t.Fatal("response X-Request-ID is empty")
 	}
 
 	metricRequest := httptest.NewRequest(http.MethodGet, "/metric", nil)
