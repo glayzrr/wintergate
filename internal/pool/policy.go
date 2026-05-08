@@ -136,10 +136,9 @@ func (r *PolicyRegistry) PolicyFor(configKey string) (Policy, bool) {
 func (r *PolicyRegistry) Decide(status Status) Decision {
 	normalizedConfigKey := normalizeConfigKey(status.ConfigKey)
 
-	// TODO 서버 기본 설정에 따라 티어 설정하기
 	decision := Decision{
 		ConfigKey: normalizedConfigKey,
-		Tier:      TierSuper,
+		Tier:      DefaultTier(),
 	}
 	if normalizedConfigKey == "" || r == nil {
 		return decision

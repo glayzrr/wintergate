@@ -17,6 +17,10 @@ type clientStore struct {
 }
 
 func newClientStore() *clientStore {
+	if err := LoadConfig(defaultConfigPath); err != nil {
+		panic(err)
+	}
+
 	store := &clientStore{
 		shared:    make(map[Tier]*cachedClient, 3),
 		dedicated: make(map[string]*cachedClient),
