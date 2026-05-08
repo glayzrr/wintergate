@@ -463,6 +463,9 @@ import "wintergate/internal/gateway"
 - [type State](<#State>)
 - [type Task](<#Task>)
 - [type TokenDecoder](<#TokenDecoder>)
+- [type TraceTask](<#TraceTask>)
+  - [func NewTraceTask\(generator \*trace.Generator\) \*TraceTask](<#NewTraceTask>)
+  - [func \(t \*TraceTask\) Run\(\_ context.Context, state \*State\) error](<#TraceTask.Run>)
 - [type TransferTask](<#TransferTask>)
   - [func NewTransferTask\(recorder \*metricrecord.Recorder\) \*TransferTask](<#NewTransferTask>)
   - [func \(t \*TransferTask\) Run\(\_ context.Context, state \*State\) error](<#TransferTask.Run>)
@@ -572,6 +575,7 @@ Request 게이트웨이가 수신한 요청의 핵심 정보만 분리해 전달
 
 ```go
 type Request struct {
+    ID                  string
     Scheme              string
     Host                string
     Port                string
@@ -648,6 +652,35 @@ type TokenDecoder interface {
     Decode(token string) (internalauth.Claims, error)
 }
 ```
+
+<a name="TraceTask"></a>
+## type TraceTask
+
+TraceTask 게이트웨이 요청 ID를 생성하거나 기존 요청 ID를 전파합니다.
+
+```go
+type TraceTask struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewTraceTask"></a>
+### func NewTraceTask
+
+```go
+func NewTraceTask(generator *trace.Generator) *TraceTask
+```
+
+NewTraceTask 요청 ID 생성용 TraceTask를 생성합니다.
+
+<a name="TraceTask.Run"></a>
+### func \(\*TraceTask\) Run
+
+```go
+func (t *TraceTask) Run(_ context.Context, state *State) error
+```
+
+Run 요청 ID를 상태, 요청 헤더, 응답 헤더에 반영합니다.
 
 <a name="TransferTask"></a>
 ## type TransferTask
@@ -1191,6 +1224,78 @@ func NormalizeRoles(roles []string) ([]string, bool)
 ```
 
 
+
+# trace
+
+```go
+import "wintergate/internal/trace"
+```
+
+## Index
+
+- [Constants](<#constants>)
+- [Variables](<#variables>)
+- [func NormalizeID\(id string\) \(string, bool\)](<#NormalizeID>)
+- [type Generator](<#Generator>)
+  - [func NewGenerator\(\) \*Generator](<#NewGenerator>)
+  - [func \(g \*Generator\) Generate\(service string\) \(string, error\)](<#Generator.Generate>)
+
+
+## Constants
+
+<a name="RequestIDHeader"></a>
+
+```go
+const (
+    RequestIDHeader = "X-Request-ID"
+)
+```
+
+## Variables
+
+<a name="ErrNilGenerator"></a>
+
+```go
+var ErrNilGenerator = errors.New("nil trace generator")
+```
+
+<a name="NormalizeID"></a>
+## func NormalizeID
+
+```go
+func NormalizeID(id string) (string, bool)
+```
+
+NormalizeID 요청 ID 헤더에 사용할 수 있는 값으로 정리합니다.
+
+<a name="Generator"></a>
+## type Generator
+
+Generator 게이트웨이 요청 추적에 사용할 요청 ID를 생성합니다.
+
+```go
+type Generator struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewGenerator"></a>
+### func NewGenerator
+
+```go
+func NewGenerator() *Generator
+```
+
+NewGenerator UUID 기반 요청 ID Generator를 생성합니다.
+
+<a name="Generator.Generate"></a>
+### func \(\*Generator\) Generate
+
+```go
+func (g *Generator) Generate(service string) (string, error)
+```
+
+Generate 서비스 식별자를 포함한 새 요청 ID를 생성합니다.
 
 # utils
 
