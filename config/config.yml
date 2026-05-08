@@ -1,0 +1,18 @@
+pool:
+  tier:
+    normal:
+      MaxIdleConns: 1024
+      MaxIdleConnsPerHost: 512
+      MaxConnsPerHost: 1024
+      IdleConnTimeout: 90s
+    hot:
+      MaxIdleConns: 2048
+      MaxIdleConnsPerHost: 1024
+      MaxConnsPerHost: 2048
+      IdleConnTimeout: 180s
+    super:
+      MaxIdleConns: 4096
+      MaxIdleConnsPerHost: 2048
+      MaxConnsPerHost: 4096
+      IdleConnTimeout: 360s
+  default-tier: super
