@@ -915,6 +915,7 @@ type Decision struct {
     ConfigKey string
     Tier      Tier
     Dedicated bool
+    Status    Status
 }
 ```
 
