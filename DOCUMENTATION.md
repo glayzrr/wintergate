@@ -296,22 +296,44 @@ import "wintergate/internal/config"
 - [type AuthSettings](<#AuthSettings>)
 - [type EndpointSettings](<#EndpointSettings>)
 - [type GlobalSettings](<#GlobalSettings>)
+- [type InstanceSettings](<#InstanceSettings>)
 - [type Registerer](<#Registerer>)
   - [func NewRegisterer\(\) \*Registerer](<#NewRegisterer>)
   - [func \(r \*Registerer\) AuthRegistry\(\) \*authconfig.Registry](<#Registerer.AuthRegistry>)
   - [func \(r \*Registerer\) Register\(settings Settings, host, port string\) error](<#Registerer.Register>)
   - [func \(r \*Registerer\) RouteRegistry\(\) \*routeconfig.Registry](<#Registerer.RouteRegistry>)
+  - [func \(r \*Registerer\) Store\(\) \*Store](<#Registerer.Store>)
+- [type RouteBindingSettings](<#RouteBindingSettings>)
+- [type ServiceSettings](<#ServiceSettings>)
 - [type Settings](<#Settings>)
+- [type Store](<#Store>)
+  - [func NewStore\(\) \*Store](<#NewStore>)
+  - [func \(s \*Store\) NextInstance\(serviceName string\) \(InstanceSettings, error\)](<#Store.NextInstance>)
+  - [func \(s \*Store\) RegisterService\(settings Settings, instance InstanceSettings\) error](<#Store.RegisterService>)
+  - [func \(s \*Store\) RouteFor\(method, path string\) \(RouteBindingSettings, bool\)](<#Store.RouteFor>)
+  - [func \(s \*Store\) ServiceFor\(serviceName string\) \(ServiceSettings, bool\)](<#Store.ServiceFor>)
 - [type ThresholdPoint](<#ThresholdPoint>)
 - [type ThresholdSettings](<#ThresholdSettings>)
 
 
 ## Variables
 
+<a name="ErrInstanceNotFound"></a>
+
+```go
+var ErrInstanceNotFound = errors.New("instance not found")
+```
+
 <a name="ErrInvalidSettings"></a>
 
 ```go
 var ErrInvalidSettings = errors.New("invalid settings")
+```
+
+<a name="ErrServiceNotFound"></a>
+
+```go
+var ErrServiceNotFound = errors.New("service not found")
 ```
 
 <a name="AuthSettings"></a>
@@ -346,11 +368,23 @@ type EndpointSettings struct {
 <a name="GlobalSettings"></a>
 ## type GlobalSettings
 
-GlobalSettings 해당 host:port 설정 안에서 공통으로 적용하는 설정 정보입니다.
+GlobalSettings 해당 서비스 설정 안에서 공통으로 적용하는 설정 정보입니다.
 
 ```go
 type GlobalSettings struct {
     Auth *AuthSettings `json:"auth"`
+}
+```
+
+<a name="InstanceSettings"></a>
+## type InstanceSettings
+
+InstanceSettings 서비스 인스턴스의 네트워크 주소입니다.
+
+```go
+type InstanceSettings struct {
+    Host string
+    Port string
 }
 ```
 
@@ -390,7 +424,7 @@ AuthRegistry 인증 런타임 설정 저장소를 반환합니다.
 func (r *Registerer) Register(settings Settings, host, port string) error
 ```
 
-Register 설정 정보를 요청 헤더의 host:port에 대응하는 런타임 저장소에 반영합니다.
+Register 설정 정보를 요청 서비스와 현재 인스턴스에 대응하는 런타임 저장소에 반영합니다.
 
 <a name="Registerer.RouteRegistry"></a>
 ### func \(\*Registerer\) RouteRegistry
@@ -401,18 +435,113 @@ func (r *Registerer) RouteRegistry() *routeconfig.Registry
 
 RouteRegistry 보호 라우트 런타임 설정 저장소를 반환합니다.
 
+<a name="Registerer.Store"></a>
+### func \(\*Registerer\) Store
+
+```go
+func (r *Registerer) Store() *Store
+```
+
+Store 서비스 라우팅과 인스턴스 런타임 저장소를 반환합니다.
+
+<a name="RouteBindingSettings"></a>
+## type RouteBindingSettings
+
+RouteBindingSettings 하나의 라우팅 기준이 연결되는 서비스 정보를 표현합니다.
+
+```go
+type RouteBindingSettings struct {
+    ServiceName string
+    Path        string
+    Method      string
+    Roles       []string
+}
+```
+
+<a name="ServiceSettings"></a>
+## type ServiceSettings
+
+ServiceSettings 등록된 서비스 설정과 인스턴스 목록의 스냅샷입니다.
+
+```go
+type ServiceSettings struct {
+    ServiceName string
+    Global      *GlobalSettings
+    Threshold   *ThresholdSettings
+    Endpoints   []EndpointSettings
+    Instances   []InstanceSettings
+}
+```
+
 <a name="Settings"></a>
 ## type Settings
 
-Settings 외부에서 host:port별로 전달하는 Wintergate 설정 정보입니다.
+Settings 외부에서 서비스별로 전달하는 Wintergate 설정 정보입니다.
 
 ```go
 type Settings struct {
-    Global    *GlobalSettings    `json:"global"`
-    Threshold *ThresholdSettings `json:"threshold"`
-    Endpoints []EndpointSettings `json:"endpoints"`
+    Global      *GlobalSettings    `json:"global"`
+    ServiceName string             `json:"service-name"`
+    Threshold   *ThresholdSettings `json:"threshold"`
+    Endpoints   []EndpointSettings `json:"endpoints"`
 }
 ```
+
+<a name="Store"></a>
+## type Store
+
+Store 서비스 설정, 라우팅 기준, 인스턴스 목록을 메모리에 저장합니다.
+
+```go
+type Store struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewStore"></a>
+### func NewStore
+
+```go
+func NewStore() *Store
+```
+
+NewStore 빈 서비스 설정 저장소를 생성합니다.
+
+<a name="Store.NextInstance"></a>
+### func \(\*Store\) NextInstance
+
+```go
+func (s *Store) NextInstance(serviceName string) (InstanceSettings, error)
+```
+
+NextInstance 지정한 서비스의 다음 인스턴스를 라운드로빈 순서로 반환합니다.
+
+<a name="Store.RegisterService"></a>
+### func \(\*Store\) RegisterService
+
+```go
+func (s *Store) RegisterService(settings Settings, instance InstanceSettings) error
+```
+
+RegisterService 서비스 설정, 라우팅 기준, 현재 인스턴스 주소를 저장소에 등록합니다.
+
+<a name="Store.RouteFor"></a>
+### func \(\*Store\) RouteFor
+
+```go
+func (s *Store) RouteFor(method, path string) (RouteBindingSettings, bool)
+```
+
+RouteFor 지정한 HTTP method와 path에 연결된 서비스 라우팅 정보를 반환합니다.
+
+<a name="Store.ServiceFor"></a>
+### func \(\*Store\) ServiceFor
+
+```go
+func (s *Store) ServiceFor(serviceName string) (ServiceSettings, bool)
+```
+
+ServiceFor 지정한 서비스 이름에 대응하는 설정 스냅샷을 반환합니다.
 
 <a name="ThresholdPoint"></a>
 ## type ThresholdPoint
