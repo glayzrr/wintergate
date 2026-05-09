@@ -18,7 +18,7 @@ func TestTraceTaskRunUsesExistingRequestID(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	state := &State{
 		Request: Request{
-			ConfigKey:      "order-service",
+			ServiceName:    "order-service",
 			HTTPRequest:    request,
 			ResponseWriter: recorder,
 		},
@@ -44,7 +44,7 @@ func TestTraceTaskRunGeneratesRequestIDWhenMissing(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
 	state := &State{
 		Request: Request{
-			ConfigKey:   "order-service",
+			ServiceName: "order-service",
 			HTTPRequest: request,
 		},
 	}

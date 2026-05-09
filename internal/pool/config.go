@@ -2,8 +2,9 @@ package pool
 
 import (
 	"fmt"
-	"strings"
 	"time"
+
+	"wintergate/internal/utils"
 )
 
 // Config http.Transport 커넥션 풀 관련 설정입니다.
@@ -56,22 +57,22 @@ var (
 
 // Configure 서버 시작 시 읽은 커넥션 풀 설정을 기본 설정으로 반영합니다.
 func Configure(configs map[Tier]Config, tier Tier) error {
-	if strings.TrimSpace(string(tier)) == "" {
+	if utils.NormalizeTrimmed(string(tier)) == "" {
 		return fmt.Errorf("%w: default tier is required", ErrInvalidConfig)
 	}
 
-	normalizedDefaultTier, err := normalizeTier(tier)
+	normalizedDefaultTier, err := poolTier(tier)
 	if err != nil {
 		return fmt.Errorf("normalize default tier: %w", err)
 	}
 
 	nextConfigs := make(map[Tier]Config, len(configs))
 	for tier, config := range configs {
-		if strings.TrimSpace(string(tier)) == "" {
+		if utils.NormalizeTrimmed(string(tier)) == "" {
 			return fmt.Errorf("%w: tier is required", ErrInvalidConfig)
 		}
 
-		normalizedTier, err := normalizeTier(tier)
+		normalizedTier, err := poolTier(tier)
 		if err != nil {
 			return fmt.Errorf("normalize tier: %w", err)
 		}
@@ -106,7 +107,7 @@ func DefaultTier() Tier {
 
 // ConfigFor 지정한 티어의 풀 설정을 반환합니다.
 func ConfigFor(tier Tier) (Config, error) {
-	normalizedTier, err := normalizeTier(tier)
+	normalizedTier, err := poolTier(tier)
 	if err != nil {
 		return Config{}, err
 	}
@@ -117,6 +118,21 @@ func ConfigFor(tier Tier) (Config, error) {
 	}
 
 	return config, nil
+}
+
+func poolTier(tier Tier) (Tier, error) {
+	normalizedTier, ok := utils.NormalizeEnum(
+		string(tier),
+		string(TierNormal),
+		string(TierNormal),
+		string(TierHot),
+		string(TierSuper),
+	)
+	if !ok {
+		return "", fmt.Errorf("%w: unsupported tier %q", ErrInvalidConfig, tier)
+	}
+
+	return Tier(normalizedTier), nil
 }
 
 func validateConfig(config Config) error {

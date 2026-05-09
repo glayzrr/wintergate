@@ -50,14 +50,6 @@ type InstanceSettings struct {
 	Port string
 }
 
-// RouteBindingSettings 하나의 라우팅 기준이 연결되는 서비스 정보를 표현합니다.
-type RouteBindingSettings struct {
-	ServiceName string
-	Path        string
-	Method      string
-	Roles       []string
-}
-
 // ServiceSettings 등록된 서비스 설정과 인스턴스 목록의 스냅샷입니다.
 type ServiceSettings struct {
 	ServiceName string

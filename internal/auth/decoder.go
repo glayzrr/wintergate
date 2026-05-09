@@ -25,25 +25,31 @@ const (
 
 // Decoder 인증 설정을 바탕으로 JWT를 검증하고 claims를 추출합니다.
 type Decoder struct {
-	registry *authconfig.Registry
+	provider AuthConfigProvider
 	now      func() time.Time
 }
 
+// AuthConfigProvider 설정 키별 인증 설정과 공개키를 조회합니다.
+type AuthConfigProvider interface {
+	SnapshotFor(configKey string) (authconfig.Config, bool)
+	PublicKeyFor(configKey, kid string) (*rsa.PublicKey, error)
+}
+
 // NewDecoder JWT 검증용 Decoder를 생성합니다.
-func NewDecoder(registry *authconfig.Registry) *Decoder {
+func NewDecoder(provider AuthConfigProvider) *Decoder {
 	return &Decoder{
-		registry: registry,
+		provider: provider,
 		now:      time.Now,
 	}
 }
 
-// ReplaceRegistry Decoder가 사용할 인증 설정 저장소를 교체합니다.
-func (d *Decoder) ReplaceRegistry(registry *authconfig.Registry) error {
-	if registry == nil {
-		return fmt.Errorf("%w: registry is required", ErrNilRegistry)
+// ReplaceProvider Decoder가 사용할 인증 설정 조회자를 교체합니다.
+func (d *Decoder) ReplaceProvider(provider AuthConfigProvider) error {
+	if provider == nil {
+		return fmt.Errorf("%w: auth config provider is required", ErrNilProvider)
 	}
 
-	d.registry = registry
+	d.provider = provider
 
 	return nil
 }
@@ -74,7 +80,11 @@ func (d *Decoder) DecodeFor(configKey, token string) (Claims, error) {
 		return Claims{}, fmt.Errorf("%w: token is required", ErrInvalidToken)
 	}
 
-	cfg, found := d.registry.SnapshotFor(configKey)
+	if d.provider == nil {
+		return Claims{}, fmt.Errorf("%w: auth config provider is required", ErrConfigUnavailable)
+	}
+
+	cfg, found := d.provider.SnapshotFor(configKey)
 	if !found {
 		return Claims{}, fmt.Errorf("%w: auth config is not registered", ErrConfigUnavailable)
 	}
@@ -201,7 +211,7 @@ func (d *Decoder) verifySignature(_ context.Context, configKey string, cfg authc
 			return fmt.Errorf("%w: kid is required", ErrInvalidToken)
 		}
 
-		publicKey, err := d.registry.PublicKeyFor(configKey, trimmedKeyID)
+			publicKey, err := d.provider.PublicKeyFor(configKey, trimmedKeyID)
 		if err != nil {
 			return fmt.Errorf("load public key: %w", err)
 		}

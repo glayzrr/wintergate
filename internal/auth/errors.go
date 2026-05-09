@@ -9,7 +9,7 @@ var (
 	ErrInvalidIssuer              = errors.New("invalid issuer")
 	ErrInvalidSignature           = errors.New("invalid signature")
 	ErrInvalidToken               = errors.New("invalid token")
-	ErrNilRegistry                = errors.New("nil registry")
+	ErrNilProvider                = errors.New("nil provider")
 	ErrTokenExpired               = errors.New("token expired")
 	ErrTokenNotYetValid           = errors.New("token not yet valid")
 	ErrUnsupportedAlgorithm       = errors.New("unsupported algorithm")

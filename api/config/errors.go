@@ -2,4 +2,4 @@ package configapi
 
 import "errors"
 
-var ErrNilRegisterer = errors.New("nil registerer")
+var ErrNilManager = errors.New("nil manager")

@@ -2,7 +2,8 @@ package trace
 
 import (
 	"fmt"
-	"strings"
+
+	"wintergate/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -37,13 +38,13 @@ func (g *Generator) Generate(service string) (string, error) {
 		return "", fmt.Errorf("generate uuid: %w", err)
 	}
 
-	normalizedService := strings.TrimSpace(service)
-	if normalizedService == "" || strings.ContainsAny(normalizedService, "\r\n") {
+	normalizedService, ok := utils.NormalizeRequestID(service, MaxRequestIDLength)
+	if !ok {
 		return id.String(), nil
 	}
 
 	requestID := fmt.Sprintf("%s-%s", normalizedService, id)
-	if _, ok := NormalizeID(requestID); !ok {
+	if _, ok := utils.NormalizeRequestID(requestID, MaxRequestIDLength); !ok {
 		return id.String(), nil
 	}
 

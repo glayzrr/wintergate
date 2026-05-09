@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	responseapi "wintergate/api/response"
+	authconfig "wintergate/internal/auth/config"
 	internalconfig "wintergate/internal/config"
 
 	"github.com/gin-gonic/gin"
@@ -26,8 +27,8 @@ func TestNewHandlerReturnsErrorWhenRegistrarNil(t *testing.T) {
 		t.Fatal("NewHandler returned nil error")
 	}
 
-	if !errors.Is(err, ErrNilRegisterer) {
-		t.Fatalf("error = %v, want ErrNilRegisterer", err)
+	if !errors.Is(err, ErrNilManager) {
+		t.Fatalf("error = %v, want ErrNilManager", err)
 	}
 }
 
@@ -37,9 +38,10 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 	privateKey := generateRSAKey(t)
 	jwksPayload := mustJWKSJSON("key-1", &privateKey.PublicKey)
 
-	registerer := internalconfig.NewRegisterer()
+	authStore := authconfig.NewStore()
+	manager := newTestManager(authStore)
 
-	handler, err := NewHandler(registerer)
+	handler, err := NewHandler(manager)
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -72,7 +74,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 		t.Fatalf("response.Message = %q, want %q", response.Message, responseRegisterSuccess)
 	}
 
-	publicKey, err := registerer.AuthRegistry().PublicKeyFor("localhost:8080", "key-1")
+	publicKey, err := authStore.PublicKeyFor("order-service", "key-1")
 	if err != nil {
 		t.Fatalf("PublicKey returned error: %v", err)
 	}
@@ -81,7 +83,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 		t.Fatal("publicKey does not match the registered key")
 	}
 
-	authRuntimeConfig, authConfigFound := registerer.AuthRegistry().SnapshotFor("localhost:8080")
+	authRuntimeConfig, authConfigFound := authStore.SnapshotFor("order-service")
 	if !authConfigFound {
 		t.Fatal("Snapshot did not return auth config")
 	}
@@ -99,8 +101,7 @@ func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuffer, nil)))
 	defer slog.SetDefault(previousLogger)
 
-	registerer := internalconfig.NewRegisterer()
-	handler, err := NewHandler(registerer)
+	handler, err := NewHandler(internalconfig.NewManager())
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -144,8 +145,7 @@ func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
 func TestHandlerEnrollConfigReturnsBadRequestWhenUnknownFieldExists(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registerer := internalconfig.NewRegisterer()
-	handler, err := NewHandler(registerer)
+	handler, err := NewHandler(internalconfig.NewManager())
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -180,8 +180,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenUnknownFieldExists(t *testing.T
 func TestHandlerEnrollConfigReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registerer := internalconfig.NewRegisterer()
-	handler, err := NewHandler(registerer)
+	handler, err := NewHandler(internalconfig.NewManager())
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -212,8 +211,8 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registerer := internalconfig.NewRegisterer()
-	handler, err := NewHandler(registerer)
+	manager := newTestManager(authconfig.NewStore())
+	handler, err := NewHandler(manager)
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -256,6 +255,15 @@ func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) respon
 	}
 
 	return response
+}
+
+func newTestManager(appliers ...internalconfig.Applier) *internalconfig.Manager {
+	manager := internalconfig.NewManager()
+	for _, applier := range appliers {
+		manager.AddApplier(applier)
+	}
+
+	return manager
 }
 
 func generateRSAKey(t *testing.T) *rsa.PrivateKey {

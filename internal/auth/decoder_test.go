@@ -14,39 +14,40 @@ import (
 	"time"
 
 	authconfig "wintergate/internal/auth/config"
+	internalconfig "wintergate/internal/config"
 )
 
-func TestNewDecoderInitializesRegistry(t *testing.T) {
-	decoder := NewDecoder(authconfig.NewRegistry())
-	if decoder.registry == nil {
-		t.Fatal("decoder.registry is nil")
+func TestNewDecoderInitializesProvider(t *testing.T) {
+	decoder := NewDecoder(authconfig.NewStore())
+	if decoder.provider == nil {
+		t.Fatal("decoder.provider is nil")
 	}
 }
 
-func TestDecoderReplaceRegistryReturnsErrorWhenRegistryNil(t *testing.T) {
-	decoder := NewDecoder(authconfig.NewRegistry())
+func TestDecoderReplaceProviderReturnsErrorWhenProviderNil(t *testing.T) {
+	decoder := NewDecoder(authconfig.NewStore())
 
-	err := decoder.ReplaceRegistry(nil)
+	err := decoder.ReplaceProvider(nil)
 	if err == nil {
-		t.Fatal("ReplaceRegistry returned nil error")
+		t.Fatal("ReplaceProvider returned nil error")
 	}
 
-	if !errors.Is(err, ErrNilRegistry) {
-		t.Fatalf("error = %v, want ErrNilRegistry", err)
+	if !errors.Is(err, ErrNilProvider) {
+		t.Fatalf("error = %v, want ErrNilProvider", err)
 	}
 }
 
-func TestDecoderReplaceRegistryStoresRegistry(t *testing.T) {
-	decoder := NewDecoder(authconfig.NewRegistry())
-	replacement := authconfig.NewRegistry()
+func TestDecoderReplaceProviderStoresProvider(t *testing.T) {
+	decoder := NewDecoder(authconfig.NewStore())
+	replacement := authconfig.NewStore()
 
-	err := decoder.ReplaceRegistry(replacement)
+	err := decoder.ReplaceProvider(replacement)
 	if err != nil {
-		t.Fatalf("ReplaceRegistry returned error: %v", err)
+		t.Fatalf("ReplaceProvider returned error: %v", err)
 	}
 
-	if decoder.registry != replacement {
-		t.Fatal("decoder.registry did not use the replacement registry")
+	if decoder.provider != replacement {
+		t.Fatal("decoder.provider did not use the replacement provider")
 	}
 }
 
@@ -84,9 +85,9 @@ func TestBearerTokenReturnsErrorWhenTokenMissing(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenConfigUnavailable(t *testing.T) {
-	decoder := NewDecoder(authconfig.NewRegistry())
+	decoder := NewDecoder(authconfig.NewStore())
 
-	_, err := decoder.Decode(mustHS256Token(t, []byte("shared-secret"), map[string]any{
+	_, err := decoder.DecodeFor("order-service", mustHS256Token(t, []byte("shared-secret"), map[string]any{
 		"aud": "wintergate",
 		"exp": time.Now().Add(time.Minute).Unix(),
 		"iss": "auth-service",
@@ -101,21 +102,17 @@ func TestDecodeReturnsErrorWhenConfigUnavailable(t *testing.T) {
 }
 
 func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	decoder := NewDecoder(authconfig.NewRegistry())
-	if err := decoder.ReplaceRegistry(registry); err != nil {
-		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	decoder := NewDecoder(authconfig.NewStore())
+	if err := decoder.ReplaceProvider(registry); err != nil {
+		t.Fatalf("ReplaceProvider returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_000, 0).UTC()
@@ -135,7 +132,7 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 		"sub": "user-1",
 	})
 
-	claims, err := decoder.Decode(token)
+	claims, err := decoder.DecodeFor("order-service", token)
 	if err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
@@ -158,21 +155,17 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 }
 
 func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	decoder := NewDecoder(authconfig.NewRegistry())
-	if err := decoder.ReplaceRegistry(registry); err != nil {
-		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	decoder := NewDecoder(authconfig.NewStore())
+	if err := decoder.ReplaceProvider(registry); err != nil {
+		t.Fatalf("ReplaceProvider returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_050, 0).UTC()
@@ -189,7 +182,7 @@ func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
 		"sub":   "user-1",
 	})
 
-	claims, err := decoder.Decode(token)
+	claims, err := decoder.DecodeFor("order-service", token)
 	if err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
@@ -214,21 +207,17 @@ func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
 
 func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 	privateKey := generatePrivateKey(t)
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "RS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWKS:         []byte(mustJWKSJSON("key-1", &privateKey.PublicKey)),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	decoder := NewDecoder(authconfig.NewRegistry())
-	if err := decoder.ReplaceRegistry(registry); err != nil {
-		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	decoder := NewDecoder(authconfig.NewStore())
+	if err := decoder.ReplaceProvider(registry); err != nil {
+		t.Fatalf("ReplaceProvider returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_100, 0).UTC()
@@ -243,7 +232,7 @@ func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 		"sub": "service-a",
 	})
 
-	claims, err := decoder.Decode(token)
+	claims, err := decoder.DecodeFor("order-service", token)
 	if err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
@@ -254,21 +243,17 @@ func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	decoder := NewDecoder(authconfig.NewRegistry())
-	if err := decoder.ReplaceRegistry(registry); err != nil {
-		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	decoder := NewDecoder(authconfig.NewStore())
+	if err := decoder.ReplaceProvider(registry); err != nil {
+		t.Fatalf("ReplaceProvider returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_200, 0).UTC()
@@ -282,7 +267,7 @@ func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 		"iss": "auth-service",
 	})
 
-	_, err = decoder.Decode(token)
+	_, err = decoder.DecodeFor("order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -293,21 +278,17 @@ func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Second,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	decoder := NewDecoder(authconfig.NewRegistry())
-	if err := decoder.ReplaceRegistry(registry); err != nil {
-		t.Fatalf("ReplaceRegistry returned error: %v", err)
+	decoder := NewDecoder(authconfig.NewStore())
+	if err := decoder.ReplaceProvider(registry); err != nil {
+		t.Fatalf("ReplaceProvider returned error: %v", err)
 	}
 
 	currentTime := time.Unix(1_700_000_300, 0).UTC()
@@ -321,7 +302,7 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 		"iss": "auth-service",
 	})
 
-	_, err = decoder.Decode(token)
+	_, err = decoder.DecodeFor("order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -332,17 +313,13 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
 	decoder := NewDecoder(registry)
 	currentTime := time.Unix(1_700_000_350, 0).UTC()
@@ -356,7 +333,7 @@ func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
 		"iss": "other-service",
 	})
 
-	_, err = decoder.Decode(token)
+	_, err = decoder.DecodeFor("order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -367,17 +344,13 @@ func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
 	decoder := NewDecoder(registry)
 	currentTime := time.Unix(1_700_000_360, 0).UTC()
@@ -391,7 +364,7 @@ func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
 		"iss": "auth-service",
 	})
 
-	_, err = decoder.Decode(token)
+	_, err = decoder.DecodeFor("order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -402,17 +375,13 @@ func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Second,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
 	decoder := NewDecoder(registry)
 	currentTime := time.Unix(1_700_000_370, 0).UTC()
@@ -427,7 +396,7 @@ func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
 		"nbf": currentTime.Add(time.Minute).Unix(),
 	})
 
-	_, err = decoder.Decode(token)
+	_, err = decoder.DecodeFor("order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -438,17 +407,13 @@ func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
 }
 
 func TestDecodeReturnsErrorWhenAlgorithmMismatch(t *testing.T) {
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	registry := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
 	decoder := NewDecoder(registry)
 	currentTime := time.Unix(1_700_000_380, 0).UTC()
@@ -472,7 +437,7 @@ func TestDecodeReturnsErrorWhenAlgorithmMismatch(t *testing.T) {
 		return mac.Sum(nil)
 	})
 
-	_, err = decoder.Decode(token)
+	_, err = decoder.DecodeFor("order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -518,7 +483,7 @@ func TestVerifyRS256SignatureReturnsErrorWhenInvalid(t *testing.T) {
 }
 
 func TestValidateClaimsReturnsErrorWhenIssuedAtInFuture(t *testing.T) {
-	decoder := NewDecoder(authconfig.NewRegistry())
+	decoder := NewDecoder(authconfig.NewStore())
 	currentTime := time.Unix(1_700_000_390, 0).UTC()
 	decoder.now = func() time.Time {
 		return currentTime
@@ -605,6 +570,31 @@ func TestNumericDateUnmarshalJSON(t *testing.T) {
 	if err := numeric.UnmarshalJSON([]byte(`"bad"`)); err == nil {
 		t.Fatal("UnmarshalJSON returned nil error for invalid payload")
 	}
+}
+
+func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
+	t.Helper()
+
+	store := authconfig.NewStore()
+	settings := internalconfig.Settings{
+		ServiceName: "order-service",
+		Global: &internalconfig.GlobalSettings{
+			Auth: &internalconfig.AuthSettings{
+				JWTAlgorithm: cfg.JWTAlgorithm,
+				JWTAudience:  cfg.JWTAudience,
+				JWTClockSkew: cfg.JWTClockSkew.String(),
+				JWTIssuer:    cfg.JWTIssuer,
+				JWTSecret:    string(cfg.JWTSecret),
+				JWKS:         append([]byte(nil), cfg.JWKS...),
+			},
+		},
+	}
+
+	if err := store.Apply(settings, "", ""); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+
+	return store
 }
 
 func mustHS256Token(t *testing.T, secret []byte, claims map[string]any) string {

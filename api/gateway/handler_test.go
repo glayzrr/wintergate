@@ -17,6 +17,7 @@ import (
 	responseapi "wintergate/api/response"
 	internalauth "wintergate/internal/auth"
 	authconfig "wintergate/internal/auth/config"
+	internalconfig "wintergate/internal/config"
 	internalgateway "wintergate/internal/gateway"
 	routeconfig "wintergate/internal/route/config"
 
@@ -207,20 +208,16 @@ func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
 func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	store := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
-	handler := NewHandler(internalgateway.NewOrchestrator(authenticateTask))
+	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(store))
+	handler := NewHandler(internalgateway.NewOrchestrator(serviceNameTask(), authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -247,20 +244,16 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	registry := authconfig.NewRegistry()
-	err := registry.Register(authconfig.Config{
+	store := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
 		JWTIssuer:    "auth-service",
 		JWTSecret:    []byte("shared-secret"),
 	})
-	if err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
 
-	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registry))
-	handler := NewHandler(internalgateway.NewOrchestrator(authenticateTask))
+	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(store))
+	handler := NewHandler(internalgateway.NewOrchestrator(serviceNameTask(), authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -333,6 +326,38 @@ type internalgatewayTaskFunc func(ctx context.Context, state *internalgateway.St
 func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgateway.State) error {
 	// 테스트에서 주입한 함수로 Orchestrator의 task 실행을 대체합니다.
 	return fn(ctx, state)
+}
+
+func serviceNameTask() internalgateway.Task {
+	return internalgatewayTaskFunc(func(_ context.Context, state *internalgateway.State) error {
+		state.Request.ServiceName = "order-service"
+		return nil
+	})
+}
+
+func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
+	t.Helper()
+
+	store := authconfig.NewStore()
+	settings := internalconfig.Settings{
+		ServiceName: "order-service",
+		Global: &internalconfig.GlobalSettings{
+			Auth: &internalconfig.AuthSettings{
+				JWTAlgorithm: cfg.JWTAlgorithm,
+				JWTAudience:  cfg.JWTAudience,
+				JWTClockSkew: cfg.JWTClockSkew.String(),
+				JWTIssuer:    cfg.JWTIssuer,
+				JWTSecret:    string(cfg.JWTSecret),
+				JWKS:         append([]byte(nil), cfg.JWKS...),
+			},
+		},
+	}
+
+	if err := store.Apply(settings, "", ""); err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+
+	return store
 }
 
 func mustHS256Token(t *testing.T, secret []byte) string {

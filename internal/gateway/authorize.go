@@ -31,9 +31,9 @@ func (t *AuthorizeTask) Run(_ context.Context, state *State) error {
 	// 라우트에서 허용한 role 중 하나라도 claims에 있는지 확인합니다.
 	if !checkRole(*state.Route, state.Claims.Roles) {
 		return fmt.Errorf(
-			"%w: config key %q does not allow %s %s",
+			"%w: service-name %q does not allow %s %s",
 			ErrInvalidRequest,
-			state.Request.ConfigKey,
+			state.Request.ServiceName,
 			state.Request.Method,
 			state.Request.Path,
 		)

@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"wintergate/internal/utils"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -123,8 +125,8 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 
 func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 	startedAt := time.Now()
-	service := normalizeMetricValue(observation.ConfigKey)
-	tier := normalizeMetricValue(observation.Tier)
+	service := utils.NormalizeMetricValue(observation.ConfigKey, unknown)
+	tier := utils.NormalizeMetricValue(observation.Tier, unknown)
 	pool := poolFor(observation.Dedicated)
 
 	// pool 선택은 요청 시작 시점에 한 번만 기록합니다.
@@ -137,7 +139,7 @@ func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 			// 요청 종료 시 pool in-flight를 감소시키고 업스트림 결과를 기록합니다.
 			r.inFlight.WithLabelValues(service, tier, pool).Dec()
 
-			statusCode := normalizeStatusCode(result.StatusCode)
+			statusCode := utils.NormalizeStatusCode(result.StatusCode, 200)
 			status := strconv.Itoa(statusCode)
 			metricResult := resultFor(statusCode)
 
@@ -148,8 +150,8 @@ func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 }
 
 func (r *PoolRecorder) recordConnection(observation PoolObservation, connection ConnectionObservation) {
-	service := normalizeMetricValue(observation.ConfigKey)
-	tier := normalizeMetricValue(observation.Tier)
+	service := utils.NormalizeMetricValue(observation.ConfigKey, unknown)
+	tier := utils.NormalizeMetricValue(observation.Tier, unknown)
 	pool := poolFor(observation.Dedicated)
 
 	event := connectionEventFor(connection)

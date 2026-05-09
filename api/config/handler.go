@@ -15,17 +15,17 @@ import (
 
 // Handler 외부 설정 정보를 수신해 내부 레지스트리에 반영합니다.
 type Handler struct {
-	registerer *internalconfig.Registerer
+	manager *internalconfig.Manager
 }
 
 // NewHandler 설정 수신 Handler를 생성합니다.
-func NewHandler(registerer *internalconfig.Registerer) (*Handler, error) {
-	if registerer == nil {
-		return nil, fmt.Errorf("%w: registerer is required", ErrNilRegisterer)
+func NewHandler(manager *internalconfig.Manager) (*Handler, error) {
+	if manager == nil {
+		return nil, fmt.Errorf("%w: manager is required", ErrNilManager)
 	}
 
 	return &Handler{
-		registerer: registerer,
+		manager: manager,
 	}, nil
 }
 
@@ -72,7 +72,7 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		ctx.ClientIP(),
 	)
 
-	if err := h.registerer.Register(settings, ctx.GetHeader(requestHeaderHost), ctx.GetHeader(requestHeaderPort)); err != nil {
+	if err := h.manager.Register(settings, ctx.GetHeader(requestHeaderHost), ctx.GetHeader(requestHeaderPort)); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
 			Success: false,
 			Message: responseRegisterFailed,

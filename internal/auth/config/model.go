@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"crypto/rsa"
+	"time"
+)
 
 // Config 인증 런타임 설정과 JWKS 값을 보관합니다.
 type Config struct {
@@ -10,6 +13,16 @@ type Config struct {
 	JWTIssuer    string
 	JWTSecret    []byte
 	JWKS         []byte
+}
+
+type authInfo struct {
+	algorithm string
+	audience  string
+	clockSkew time.Duration
+	issuer    string
+	secret    []byte
+	jwks      []byte
+	keys      map[string]*rsa.PublicKey
 }
 
 type document struct {

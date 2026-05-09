@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"wintergate/internal/utils"
 )
 
 func TestNewTransportAppliesTierConfig(t *testing.T) {
@@ -93,7 +95,10 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	request.Header.Set("X-Request-ID", "request-1")
 	recorder := httptest.NewRecorder()
 
-	if err := HandleRequest("order-service", upstream.URL, recorder, request, nil); err != nil {
+	if err := HandleRequest(upstream.URL, recorder, request, Assignment{
+		ConfigKey: "order-service",
+		Tier:      TierNormal,
+	}, nil); err != nil {
 		t.Fatalf("HandleRequest returned error: %v", err)
 	}
 
@@ -119,15 +124,6 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.T) {
 	resetDefaultState(t)
 
-	if err := RegisterPolicies([]Policy{
-		{
-			ConfigKey: "order-service",
-			Hot:       Threshold{InFlight: 1},
-		},
-	}); err != nil {
-		t.Fatalf("RegisterPolicies returned error: %v", err)
-	}
-
 	upstreamStarted := make(chan struct{}, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamStarted <- struct{}{}
@@ -135,7 +131,11 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 	}))
 	defer upstream.Close()
 
-	errCh := handleRequestAsync(t, "order-service", upstream.URL, 200*time.Millisecond)
+	errCh := handleRequestAsync(t, "order-service", upstream.URL, Assignment{
+		ConfigKey: "order-service",
+		Tier:      TierHot,
+		Dedicated: true,
+	}, 200*time.Millisecond)
 	waitForSignal(t, upstreamStarted, "first upstream request")
 
 	hotClient := dedicatedCachedClient(t, defaultClients, "order-service")
@@ -172,7 +172,7 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 		t.Fatalf("dedicatedCount = %d, want %d", dedicatedCount, 0)
 	}
 
-	decision := Decision{
+	decision := Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierNormal,
 	}
@@ -188,11 +188,11 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 func TestClientStoreUsesSharedTierClients(t *testing.T) {
 	store := newClientStore()
 
-	normalClient := mustClient(t, store, Decision{
+	normalClient := mustClient(t, store, Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierNormal,
 	})
-	hotClient := mustClient(t, store, Decision{
+	hotClient := mustClient(t, store, Assignment{
 		ConfigKey: "payment-service",
 		Tier:      TierHot,
 	})
@@ -208,12 +208,12 @@ func TestClientStoreUsesSharedTierClients(t *testing.T) {
 func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 	store := newClientStore()
 
-	orderClient := mustClient(t, store, Decision{
+	orderClient := mustClient(t, store, Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
-	paymentClient := mustClient(t, store, Decision{
+	paymentClient := mustClient(t, store, Assignment{
 		ConfigKey: "payment-service",
 		Tier:      TierHot,
 		Dedicated: true,
@@ -231,12 +231,12 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 	store := newClientStore()
 
-	hotClient := mustClient(t, store, Decision{
+	hotClient := mustClient(t, store, Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
 	})
-	superClient := mustClient(t, store, Decision{
+	superClient := mustClient(t, store, Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierSuper,
 		Dedicated: true,
@@ -256,7 +256,7 @@ func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	store := newClientStore()
 
-	dedicatedClient := mustClient(t, store, Decision{
+	dedicatedClient := mustClient(t, store, Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierHot,
 		Dedicated: true,
@@ -266,7 +266,7 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 		t.Fatal("shared hot client not found")
 	}
 
-	client := mustClient(t, store, Decision{
+	client := mustClient(t, store, Assignment{
 		ConfigKey: "order-service",
 		Tier:      TierHot,
 	})
@@ -290,20 +290,17 @@ func resetDefaultState(t *testing.T) {
 
 	previousClients := defaultClients
 	previousRecorder := defaultRecorder
-	previousPolicyRegistry := defaultPolicyRegistry
 
 	defaultClients = newClientStore()
 	defaultRecorder = NewRecorder()
-	defaultPolicyRegistry = NewPolicyRegistry()
 
 	t.Cleanup(func() {
 		defaultClients = previousClients
 		defaultRecorder = previousRecorder
-		defaultPolicyRegistry = previousPolicyRegistry
 	})
 }
 
-func handleRequestAsync(t *testing.T, service, host string, timeout time.Duration) <-chan error {
+func handleRequestAsync(t *testing.T, service, host string, decision Assignment, timeout time.Duration) <-chan error {
 	t.Helper()
 
 	errCh := make(chan error, 1)
@@ -314,7 +311,10 @@ func handleRequestAsync(t *testing.T, service, host string, timeout time.Duratio
 
 	go func() {
 		defer cancel()
-		errCh <- HandleRequest(service, host, recorder, request, nil)
+		doneFunc := StartRecord(service)
+		defer doneFunc()
+
+		errCh <- HandleRequest(host, recorder, request, decision, nil)
 	}()
 
 	return errCh
@@ -340,7 +340,7 @@ func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *ca
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	client := store.dedicated[normalizeConfigKey(service)]
+	client := store.dedicated[utils.NormalizeServiceName(service)]
 	if client == nil {
 		t.Fatalf("dedicated client for %q not found", service)
 	}
@@ -408,7 +408,7 @@ func waitForRequestError(t *testing.T, errCh <-chan error) error {
 	return nil
 }
 
-func mustClient(t *testing.T, store *clientStore, decision Decision) *cachedClient {
+func mustClient(t *testing.T, store *clientStore, decision Assignment) *cachedClient {
 	t.Helper()
 
 	client, err := store.ClientFor(decision)

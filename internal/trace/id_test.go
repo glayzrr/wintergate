@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"wintergate/internal/utils"
+
 	"github.com/google/uuid"
 )
 
@@ -60,16 +62,16 @@ func TestGeneratorGenerateReturnsErrorWhenUUIDFails(t *testing.T) {
 	}
 }
 
-func TestNormalizeID(t *testing.T) {
-	requestID, ok := NormalizeID(" request-1 ")
+func TestNormalizeRequestID(t *testing.T) {
+	requestID, ok := utils.NormalizeRequestID(" request-1 ", MaxRequestIDLength)
 	if !ok {
-		t.Fatal("NormalizeID returned false")
+		t.Fatal("NormalizeRequestID returned false")
 	}
 	if requestID != "request-1" {
 		t.Fatalf("requestID = %q, want %q", requestID, "request-1")
 	}
 
-	if _, ok := NormalizeID("request\n1"); ok {
-		t.Fatal("NormalizeID returned true for newline")
+	if _, ok := utils.NormalizeRequestID("request\n1", MaxRequestIDLength); ok {
+		t.Fatal("NormalizeRequestID returned true for newline")
 	}
 }

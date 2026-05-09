@@ -11,15 +11,21 @@ import (
 	"wintergate/internal/pool"
 )
 
+type PoolProvider interface {
+	DecisionFor(status pool.Status) pool.Assignment
+}
+
 // TransferTask 인증과 인가를 통과한 요청을 업스트림 서비스로 전달합니다.
 type TransferTask struct {
 	recorder *metricrecord.Recorder
+	provider PoolProvider
 }
 
 // NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
-func NewTransferTask(recorder *metricrecord.Recorder) *TransferTask {
+func NewTransferTask(recorder *metricrecord.Recorder, provider PoolProvider) *TransferTask {
 	return &TransferTask{
 		recorder: recorder,
+		provider: provider,
 	}
 }
 
@@ -33,9 +39,12 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 	if state.Request.HTTPRequest == nil {
 		return fmt.Errorf("%w: http request is required", ErrInvalidRequest)
 	}
-	// RouteTask가 식별한 설정 키가 있어야 풀 정책과 트래픽 기록을 적용할 수 있습니다.
-	if strings.TrimSpace(state.Request.ConfigKey) == "" {
-		return fmt.Errorf("%w: config key is required", ErrInvalidRequest)
+	// RouteTask가 식별한 서비스 이름이 있어야 풀 정책과 트래픽 기록을 적용할 수 있습니다.
+	if strings.TrimSpace(state.Request.ServiceName) == "" {
+		return fmt.Errorf("%w: service-name is required", ErrInvalidRequest)
+	}
+	if t.provider == nil {
+		return fmt.Errorf("%w: pool provider is required", ErrInvalidRequest)
 	}
 
 	// nginx가 전달한 scheme, host, port를 업스트림 요청 URL로 변환합니다.
@@ -44,8 +53,19 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 		return err
 	}
 
+	// 요청 시작과 종료 시점을 기록해 서비스 이름별 트래픽 상태를 갱신합니다.
+	doneFunc := pool.StartRecord(state.Request.ServiceName)
+	defer doneFunc()
+
+	status, err := pool.StatusFor(state.Request.ServiceName)
+	if err != nil {
+		return fmt.Errorf("read pool status: %w", err)
+	}
+
+	decision := t.provider.DecisionFor(status)
+
 	// 커넥션 풀 정책을 적용해 업스트림으로 요청을 전달하고 응답을 클라이언트에 씁니다.
-	if err := pool.HandleRequest(state.Request.ConfigKey, upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest, t.recorder); err != nil {
+	if err := pool.HandleRequest(upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest, decision, t.recorder); err != nil {
 		return fmt.Errorf("handle upstream request: %w", err)
 	}
 

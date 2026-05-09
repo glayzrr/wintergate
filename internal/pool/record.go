@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"wintergate/internal/utils"
 )
 
 const defaultWindow = time.Minute
@@ -83,7 +85,7 @@ func (r *Recorder) Start(configKey string) DoneFunc {
 		return noopDone
 	}
 
-	normalizedConfigKey := normalizeConfigKey(configKey)
+	normalizedConfigKey := utils.NormalizeServiceName(configKey)
 	if normalizedConfigKey == "" {
 		return noopDone
 	}
@@ -113,7 +115,7 @@ func (r *Recorder) StatusFor(configKey string) (Status, error) {
 		return Status{}, fmt.Errorf("%w: recorder is nil", ErrStatusNotFound)
 	}
 
-	normalizedConfigKey := normalizeConfigKey(configKey)
+	normalizedConfigKey := utils.NormalizeServiceName(configKey)
 	if normalizedConfigKey == "" {
 		return Status{}, fmt.Errorf("%w: config key is required", ErrInvalidConfigKey)
 	}

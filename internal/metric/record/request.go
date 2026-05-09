@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"wintergate/internal/utils"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -84,9 +86,9 @@ func (r *RequestRecorder) recordRequest() RequestDoneFunc {
 			// 요청 완료 시점에 현재 처리 중인 HTTP 요청 수를 되돌립니다.
 			r.inFlight.Dec()
 
-			path := normalizePath(observation.Path)
-			method := normalizeMethod(observation.Method)
-			statusCode := normalizeStatusCode(observation.StatusCode)
+			path := utils.NormalizeMetricPath(observation.Path, routeGateway)
+			method := utils.NormalizeMetricMethod(observation.Method)
+			statusCode := utils.NormalizeStatusCode(observation.StatusCode, http.StatusOK)
 			status := strconv.Itoa(statusCode)
 			result := resultFor(statusCode)
 

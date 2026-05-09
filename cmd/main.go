@@ -7,10 +7,13 @@ import (
 	configapi "wintergate/api/config"
 	gatewayapi "wintergate/api/gateway"
 	internalauth "wintergate/internal/auth"
+	authconfig "wintergate/internal/auth/config"
 	internalconfig "wintergate/internal/config"
 	internalgateway "wintergate/internal/gateway"
 	internalmetric "wintergate/internal/metric"
 	metricrecord "wintergate/internal/metric/record"
+	"wintergate/internal/pool"
+	routeconfig "wintergate/internal/route/config"
 	internaltrace "wintergate/internal/trace"
 
 	"github.com/gin-gonic/gin"
@@ -41,9 +44,17 @@ func run() error {
 }
 
 func newRouter() (*gin.Engine, error) {
-	// 설정 등록기는 config, route, auth 런타임 상태를 함께 관리합니다.
-	registerer := internalconfig.NewRegisterer()
-	configHandler, err := configapi.NewHandler(registerer)
+	// 설정 Manager는 각 런타임 저장소에 서비스 설정을 브로드캐스팅합니다.
+	manager := internalconfig.NewManager()
+	authStore := authconfig.NewStore()
+	routeStore := routeconfig.NewStore()
+	poolStore := pool.NewStore()
+
+	manager.AddApplier(routeStore)
+	manager.AddApplier(authStore)
+	manager.AddApplier(poolStore)
+
+	configHandler, err := configapi.NewHandler(manager)
 	if err != nil {
 		return nil, fmt.Errorf("create config handler: %w", err)
 	}
@@ -58,11 +69,11 @@ func newRouter() (*gin.Engine, error) {
 	metricHandler := internalmetric.NewHandler(metricRegistry)
 
 	// 게이트웨이 요청은 라우팅, 인증, 인가, 업스트림 전송 순서로 처리합니다.
-	routerTask := internalgateway.NewRouteTask(registerer.RouteRegistry())
+	routerTask := internalgateway.NewRouteTask(routeStore)
 	traceTask := internalgateway.NewTraceTask(internaltrace.NewGenerator())
-	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(registerer.AuthRegistry()))
+	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(authStore))
 	authorizeTask := internalgateway.NewAuthorizeTask()
-	transferTask := internalgateway.NewTransferTask(metricRecorder)
+	transferTask := internalgateway.NewTransferTask(metricRecorder, poolStore)
 
 	gatewayHandler := gatewayapi.NewHandler(internalgateway.NewOrchestrator(
 		routerTask,

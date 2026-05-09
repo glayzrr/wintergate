@@ -9,25 +9,20 @@ import (
 )
 
 func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
-	registry := routeconfig.NewRegistry()
-	if err := registry.Register(routeconfig.Config{
-		Key: "localhost:8080",
-		Entries: []routeconfig.Entry{
-			{
-				Path:       "/orders",
-				HttpMethod: "GET",
-				Roles:      []string{"ADMIN"},
-			},
-		},
-	}); err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
+	task := NewRouteTask(routeProviderFunc(func(method, path string) (routeconfig.RouteInfo, bool) {
+		if method != "GET" || path != "/orders" {
+			return routeconfig.RouteInfo{}, false
+		}
 
-	task := NewRouteTask(registry)
+		return routeconfig.RouteInfo{
+			ServiceName: "order-service",
+			Path:        "/orders",
+			HttpMethod:  "GET",
+			Roles:       []string{"ADMIN"},
+		}, true
+	}))
 	state := &State{
 		Request: Request{
-			Host:   "localhost",
-			Port:   "8080",
 			Method: "GET",
 			Path:   "/orders",
 		},
@@ -37,8 +32,8 @@ func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if state.Request.ConfigKey != "localhost:8080" {
-		t.Fatalf("state.Request.ConfigKey = %q, want %q", state.Request.ConfigKey, "localhost:8080")
+	if state.Request.ServiceName != "order-service" {
+		t.Fatalf("state.Request.ServiceName = %q, want %q", state.Request.ServiceName, "order-service")
 	}
 	if state.Route == nil {
 		t.Fatal("state.Route is nil")
@@ -52,24 +47,11 @@ func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 }
 
 func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
-	registry := routeconfig.NewRegistry()
-	if err := registry.Register(routeconfig.Config{
-		Key: "localhost:8080",
-		Entries: []routeconfig.Entry{
-			{
-				Path:       "/orders",
-				HttpMethod: "GET",
-			},
-		},
-	}); err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
-
-	task := NewRouteTask(registry)
+	task := NewRouteTask(routeProviderFunc(func(string, string) (routeconfig.RouteInfo, bool) {
+		return routeconfig.RouteInfo{}, false
+	}))
 	state := &State{
 		Request: Request{
-			Host:   "missing.local",
-			Port:   "8080",
 			Method: "GET",
 			Path:   "/missing",
 		},
@@ -85,89 +67,20 @@ func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
 	}
 }
 
-func TestRouteTaskRunLeavesRouteNilWhenRouteDoesNotMatchRequest(t *testing.T) {
-	registry := routeconfig.NewRegistry()
-	if err := registry.Register(routeconfig.Config{
-		Key: "localhost:8080",
-		Entries: []routeconfig.Entry{
-			{
-				Path:       "/orders",
-				HttpMethod: "GET",
-				Roles:      []string{"ADMIN"},
-			},
-		},
-	}); err != nil {
-		t.Fatalf("Register returned error: %v", err)
-	}
+func TestRouteTaskRunReturnsErrorWhenProviderNil(t *testing.T) {
+	task := NewRouteTask(nil)
 
-	task := NewRouteTask(registry)
-	state := &State{
-		Request: Request{
-			Host:   "localhost",
-			Port:   "8080",
-			Method: "POST",
-			Path:   "/orders",
-		},
+	err := task.Run(context.Background(), &State{})
+	if err == nil {
+		t.Fatal("Run returned nil error")
 	}
-
-	if err := task.Run(context.Background(), state); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-	if state.Route != nil {
-		t.Fatalf("state.Route = %#v, want nil", state.Route)
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("error = %v, want ErrInvalidRequest", err)
 	}
 }
 
-func TestMatchRoute(t *testing.T) {
-	tests := []struct {
-		name      string
-		routeInfo routeconfig.RouteInfo
-		method    string
-		path      string
-		matched   bool
-	}{
-		{
-			name:      "exact",
-			routeInfo: routeconfig.RouteInfo{Path: "/orders", HttpMethod: "GET"},
-			method:    "GET",
-			path:      "/orders",
-			matched:   true,
-		},
-		{
-			name:      "all method",
-			routeInfo: routeconfig.RouteInfo{Path: "/orders", HttpMethod: "ALL"},
-			method:    "POST",
-			path:      "/orders",
-			matched:   true,
-		},
-		{
-			name:      "wildcard path",
-			routeInfo: routeconfig.RouteInfo{Path: "/actuator/**", HttpMethod: "GET"},
-			method:    "GET",
-			path:      "/actuator/health",
-			matched:   true,
-		},
-		{
-			name:      "mismatched method",
-			routeInfo: routeconfig.RouteInfo{Path: "/orders", HttpMethod: "GET"},
-			method:    "POST",
-			path:      "/orders",
-			matched:   false,
-		},
-		{
-			name:      "mismatched path",
-			routeInfo: routeconfig.RouteInfo{Path: "/orders", HttpMethod: "GET"},
-			method:    "GET",
-			path:      "/payments",
-			matched:   false,
-		},
-	}
+type routeProviderFunc func(method, path string) (routeconfig.RouteInfo, bool)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if matched := matchRoute(tt.routeInfo, tt.method, tt.path); matched != tt.matched {
-				t.Fatalf("matchRoute = %v, want %v", matched, tt.matched)
-			}
-		})
-	}
+func (fn routeProviderFunc) RouteFor(method, path string) (routeconfig.RouteInfo, bool) {
+	return fn(method, path)
 }

@@ -13,8 +13,8 @@ type TokenDecoder interface {
 	Decode(token string) (internalauth.Claims, error)
 }
 
-type configKeyTokenDecoder interface {
-	DecodeFor(configKey, token string) (internalauth.Claims, error)
+type serviceNameTokenDecoder interface {
+	DecodeFor(serviceName, token string) (internalauth.Claims, error)
 }
 
 // AuthenticateTask 게이트웨이 요청의 Bearer JWT를 검증합니다.
@@ -47,8 +47,8 @@ func (t *AuthenticateTask) Run(_ context.Context, state *State) error {
 
 	// 토큰 서명과 claims를 검증하고 이후 task에서 사용할 수 있도록 저장합니다.
 	var claims internalauth.Claims
-	if decoder, ok := t.decoder.(configKeyTokenDecoder); ok {
-		claims, err = decoder.DecodeFor(state.Request.ConfigKey, token)
+	if decoder, ok := t.decoder.(serviceNameTokenDecoder); ok {
+		claims, err = decoder.DecodeFor(state.Request.ServiceName, token)
 	} else {
 		claims, err = t.decoder.Decode(token)
 	}

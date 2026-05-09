@@ -71,8 +71,8 @@ func TestReceiveRunsTasksInOrder(t *testing.T) {
 func TestReceivePreservesAuthorizationHeader(t *testing.T) {
 	orchestrator := NewOrchestrator(
 		TaskFunc(func(_ context.Context, state *State) error {
-			if state.Request.ConfigKey != "localhost:8080" {
-				t.Fatalf("state.Request.ConfigKey = %q, want %q", state.Request.ConfigKey, "localhost:8080")
+			if state.Request.ServiceName != "order-service" {
+				t.Fatalf("state.Request.ServiceName = %q, want %q", state.Request.ServiceName, "order-service")
 			}
 
 			if state.Request.AuthorizationHeader != "Bearer token-value" {
@@ -84,7 +84,7 @@ func TestReceivePreservesAuthorizationHeader(t *testing.T) {
 	)
 
 	err := orchestrator.Receive(context.Background(), Request{
-		ConfigKey:           " localhost:8080 ",
+		ServiceName:         " order-service ",
 		Method:              "POST",
 		Path:                "/orders",
 		AuthorizationHeader: "Bearer token-value",

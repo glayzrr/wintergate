@@ -2,199 +2,181 @@ package pool
 
 import (
 	"fmt"
-	"log/slog"
-	"net/http"
 	"sync"
+
+	"wintergate/internal/config"
+	"wintergate/internal/utils"
 )
 
-var defaultClients = newClientStore()
+// Threshold 특정 풀 티어로 승격하기 위한 RPS/in-flight 기준입니다.
+type Threshold struct {
+	RPS      float64
+	InFlight int64
+}
 
-type clientStore struct {
-	shared    map[Tier]*cachedClient
-	dedicated map[string]*cachedClient
+// poolInfo 서비스 이름별 트래픽 분류 정책입니다.
+type poolInfo struct {
+	ConfigKey string
+	Hot       Threshold
+	Super     Threshold
+}
 
-	// shared/dedicated http.Client 캐시의 동시 조회와 교체를 보호합니다.
+// Assignment 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
+type Assignment struct {
+	ConfigKey string
+	Tier      Tier
+	Dedicated bool
+	Status    Status
+}
+
+// Store 서비스 이름별 트래픽 분류 정책을 저장합니다.
+type Store struct {
+	policies map[string]poolInfo
+
+	// mu는 policies map의 동시 조회와 정책 교체를 보호합니다.
 	mu sync.RWMutex
 }
 
-func newClientStore() *clientStore {
-	if err := LoadConfig(defaultConfigPath); err != nil {
-		panic(err)
+// NewStore 빈 트래픽 정책 저장소를 생성합니다.
+func NewStore() *Store {
+	return &Store{
+		policies: make(map[string]poolInfo),
 	}
-
-	store := &clientStore{
-		shared:    make(map[Tier]*cachedClient, 3),
-		dedicated: make(map[string]*cachedClient),
-	}
-
-	for _, tier := range []Tier{TierNormal, TierHot, TierSuper} {
-		client, err := newCachedClient(tier)
-		if err != nil {
-			panic(err)
-		}
-
-		store.shared[tier] = client
-	}
-
-	return store
 }
 
-func (s *clientStore) ClientFor(decision Decision) (*cachedClient, error) {
+// Apply 전달받은 서비스 설정의 threshold를 서비스 이름별 정책으로 반영합니다.
+func (s *Store) Apply(settings config.Settings, _, _ string) error {
 	if s == nil {
-		return nil, fmt.Errorf("%w: client store is nil", ErrInvalidConfig)
+		return fmt.Errorf("%w: store is nil", ErrInvalidPolicy)
 	}
 
-	normalizedTier, err := normalizeTier(decision.Tier)
-	if err != nil {
-		return nil, err
-	}
-	decision.Tier = normalizedTier
-
-	if !decision.Dedicated {
-		return s.sharedClient(decision)
+	normalizedServiceName := utils.NormalizeServiceName(settings.ServiceName)
+	if normalizedServiceName == "" {
+		return fmt.Errorf("%w: service-name is required", ErrInvalidPolicy)
 	}
 
-	return s.dedicatedClient(decision)
-}
-
-func (s *clientStore) sharedClient(decision Decision) (*cachedClient, error) {
-	configKey := normalizeConfigKey(decision.ConfigKey)
-
-	// 전용 client가 없는 서비스는 read lock만으로 shared client를 바로 반환합니다.
-	s.mu.RLock()
-	cached := s.shared[decision.Tier]
-	_, hasDedicated := s.dedicated[configKey]
-	if cached != nil && (!hasDedicated || configKey == "") {
-		cached.acquire()
-		s.mu.RUnlock()
-		return cached, nil
+	if settings.Threshold == nil {
+		s.Delete(normalizedServiceName)
+		return nil
 	}
-	s.mu.RUnlock()
 
-	// 전용 client에서 shared client로 복귀해야 할 때만 write lock을 잡습니다.
+	policy := poolInfo{
+		ConfigKey: normalizedServiceName,
+		Hot: Threshold{
+			RPS:      settings.Threshold.Hot.RPS,
+			InFlight: settings.Threshold.Hot.InFlight,
+		},
+		Super: Threshold{
+			RPS:      settings.Threshold.Super.RPS,
+			InFlight: settings.Threshold.Super.InFlight,
+		},
+	}
+
+	if err := validateThreshold(policy.Hot, "hot"); err != nil {
+		return err
+	}
+	if err := validateThreshold(policy.Super, "super"); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Dedicated=false 판단이 내려진 서비스는 전용 풀을 해제하고 shared 풀로 합류합니다.
-	if configKey != "" {
-		if oldClient, found := s.dedicated[configKey]; found {
-			oldClient.retire()
-			delete(s.dedicated, configKey)
-		}
-	}
+	s.policies[normalizedServiceName] = policy
 
-	// shared client는 normal/hot/super tier별로 하나씩 유지합니다.
-	cached = s.shared[decision.Tier]
-	if cached == nil {
-		var err error
-		cached, err = newCachedClient(decision.Tier)
-		if err != nil {
-			return nil, err
-		}
-		s.shared[decision.Tier] = cached
-	}
-
-	cached.acquire()
-	return cached, nil
+	return nil
 }
 
-func (s *clientStore) dedicatedClient(decision Decision) (*cachedClient, error) {
-	configKey := normalizeConfigKey(decision.ConfigKey)
-	if configKey == "" {
-		return nil, fmt.Errorf("%w: config key is required for dedicated pool", ErrInvalidConfigKey)
+// Delete 지정한 서비스 이름의 정책을 제거합니다.
+func (s *Store) Delete(serviceName string) {
+	if s == nil {
+		return
 	}
 
-	// 이미 같은 tier의 전용 client가 있으면 read lock만으로 재사용합니다.
-	s.mu.RLock()
-	cached := s.dedicated[configKey]
-	if cached != nil && cached.tier == decision.Tier {
-		cached.acquire()
-		s.mu.RUnlock()
-		return cached, nil
+	normalizedServiceName := utils.NormalizeServiceName(serviceName)
+	if normalizedServiceName == "" {
+		return
 	}
-	s.mu.RUnlock()
 
-	// 전용 client가 없거나 tier가 바뀐 경우에만 write lock으로 생성/교체합니다.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// lock 대기 중 다른 고루틴이 같은 tier client를 만들었을 수 있어 다시 확인합니다.
-	cached = s.dedicated[configKey]
-	if cached != nil && cached.tier == decision.Tier {
-		cached.acquire()
-		return cached, nil
-	}
-
-	// Transport 설정은 생성 후 변경하지 않으므로 tier 변경 시 새 client로 교체합니다.
-	nextClient, err := newCachedClient(decision.Tier)
-	if err != nil {
-		return nil, err
-	}
-
-	// 기존 전용 client는 새 요청에서 제외하고, 진행 중 요청이 끝난 뒤 idle connection을 닫습니다.
-	previousTier := ""
-	if cached != nil {
-		previousTier = string(cached.tier)
-		cached.retire()
-	}
-	s.dedicated[configKey] = nextClient
-
-	slog.Info(
-		logDedicatedPoolReplaced,
-		logAttrConfigKey, configKey,
-		logAttrTier, decision.Tier,
-		logAttrPreviousTier, previousTier,
-		logAttrRPS, decision.Status.RPS,
-		logAttrInFlight, decision.Status.InFlight,
-		logAttrRequestsInWindow, decision.Status.RequestsInWindow,
-		logAttrStartedRequests, decision.Status.StartedRequests,
-		logAttrFinishedRequests, decision.Status.FinishedRequests,
-		logAttrAverageLatency, decision.Status.AverageLatency,
-	)
-
-	nextClient.acquire()
-	return nextClient, nil
+	delete(s.policies, normalizedServiceName)
 }
 
-func (s *clientStore) count() (int, int) {
+// PolicyFor 서비스 이름별 등록 정책의 사본을 반환합니다.
+func (s *Store) PolicyFor(serviceName string) (poolInfo, bool) {
 	if s == nil {
-		return 0, 0
+		return poolInfo{}, false
+	}
+
+	normalizedServiceName := utils.NormalizeServiceName(serviceName)
+	if normalizedServiceName == "" {
+		return poolInfo{}, false
 	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return len(s.shared), len(s.dedicated)
+	policy, found := s.policies[normalizedServiceName]
+
+	return policy, found
 }
 
-func (s *clientStore) dedicatedTier(configKey string) (Tier, bool) {
-	if s == nil {
-		return "", false
+// DecisionFor 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
+func (s *Store) DecisionFor(status Status) Assignment {
+	normalizedServiceName := utils.NormalizeServiceName(status.ConfigKey)
+
+	decision := Assignment{
+		ConfigKey: normalizedServiceName,
+		Tier:      DefaultTier(),
+		Status:    status,
+	}
+	if normalizedServiceName == "" || s == nil {
+		return decision
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cached := s.dedicated[normalizeConfigKey(configKey)]
-	if cached == nil {
-		return "", false
+	// 등록된 정책이 없으면 기본 정책을 반환합니다.
+	policy, found := s.PolicyFor(normalizedServiceName)
+	if !found {
+		return decision
 	}
 
-	return cached.tier, true
+	decision.Tier = decideTier(status, policy)
+	decision.Dedicated = true
+
+	return decision
 }
 
-func (s *clientStore) sharedClientForTier(tier Tier) (*http.Client, bool) {
-	if s == nil {
-		return nil, false
+func validateThreshold(threshold Threshold, name string) error {
+	if threshold.RPS < 0 {
+		return fmt.Errorf("%w: %s rps must be greater than or equal to zero", ErrInvalidPolicy, name)
+	}
+	if threshold.InFlight < 0 {
+		return fmt.Errorf("%w: %s in-flight must be greater than or equal to zero", ErrInvalidPolicy, name)
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	return nil
+}
 
-	cached := s.shared[tier]
-	if cached == nil {
-		return nil, false
+func decideTier(status Status, policy poolInfo) Tier {
+	if thresholdReached(status, policy.Super) {
+		return TierSuper
+	}
+	if thresholdReached(status, policy.Hot) {
+		return TierHot
 	}
 
-	return cached.client, true
+	return TierNormal
+}
+
+func thresholdReached(status Status, threshold Threshold) bool {
+	if threshold.RPS > 0 && status.RPS >= threshold.RPS {
+		return true
+	}
+	if threshold.InFlight > 0 && status.InFlight >= threshold.InFlight {
+		return true
+	}
+
+	return false
 }
