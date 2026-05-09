@@ -2,14 +2,15 @@ package config
 
 import "encoding/json"
 
-// Settings 외부에서 host:port별로 전달하는 Wintergate 설정 정보입니다.
+// Settings 외부에서 서비스별로 전달하는 Wintergate 설정 정보입니다.
 type Settings struct {
-	Global    *GlobalSettings    `json:"global"`
-	Threshold *ThresholdSettings `json:"threshold"`
-	Endpoints []EndpointSettings `json:"endpoints"`
+	Global      *GlobalSettings    `json:"global"`
+	ServiceName string             `json:"service-name"`
+	Threshold   *ThresholdSettings `json:"threshold"`
+	Endpoints   []EndpointSettings `json:"endpoints"`
 }
 
-// GlobalSettings 해당 host:port 설정 안에서 공통으로 적용하는 설정 정보입니다.
+// GlobalSettings 해당 서비스 설정 안에서 공통으로 적용하는 설정 정보입니다.
 type GlobalSettings struct {
 	Auth *AuthSettings `json:"auth"`
 }
@@ -41,4 +42,27 @@ type EndpointSettings struct {
 	Path   string   `json:"path"`
 	Method string   `json:"method"`
 	Roles  []string `json:"roles"`
+}
+
+// InstanceSettings 서비스 인스턴스의 네트워크 주소입니다.
+type InstanceSettings struct {
+	Host string
+	Port string
+}
+
+// RouteBindingSettings 하나의 라우팅 기준이 연결되는 서비스 정보를 표현합니다.
+type RouteBindingSettings struct {
+	ServiceName string
+	Path        string
+	Method      string
+	Roles       []string
+}
+
+// ServiceSettings 등록된 서비스 설정과 인스턴스 목록의 스냅샷입니다.
+type ServiceSettings struct {
+	ServiceName string
+	Global      *GlobalSettings
+	Threshold   *ThresholdSettings
+	Endpoints   []EndpointSettings
+	Instances   []InstanceSettings
 }

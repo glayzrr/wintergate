@@ -50,7 +50,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigRoute,
-		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`}},"threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`}},"service-name":"order-service","threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Service-Host", "localhost")
@@ -111,7 +111,7 @@ func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigRoute,
-		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"endpoints":[{"path":"/api/order","method":"POST","roles":[]}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":[]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Service-Host", "localhost")
@@ -224,7 +224,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigRoute,
-		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service"}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service"}},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Service-Host", "localhost")

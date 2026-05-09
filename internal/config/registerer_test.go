@@ -15,6 +15,10 @@ func TestNewRegistererInitializesRegistry(t *testing.T) {
 	if registerer.routeRegistry == nil {
 		t.Fatal("routeRegistry is nil")
 	}
+
+	if registerer.store == nil {
+		t.Fatal("store is nil")
+	}
 }
 
 func TestRegisterStoresSettingsWhenValid(t *testing.T) {
@@ -48,6 +52,22 @@ func TestRegisterStoresSettingsWhenValid(t *testing.T) {
 	if _, found := registerer.authRegistry.SnapshotFor("localhost:8080"); !found {
 		t.Fatal("SnapshotFor did not find localhost:8080")
 	}
+
+	binding, found := registerer.store.RouteFor("POST", "/api/order")
+	if !found {
+		t.Fatal("RouteFor did not find route binding")
+	}
+	if binding.ServiceName != "order-service" {
+		t.Fatalf("binding.ServiceName = %q, want %q", binding.ServiceName, "order-service")
+	}
+
+	instance, err := registerer.store.NextInstance("order-service")
+	if err != nil {
+		t.Fatalf("NextInstance returned error: %v", err)
+	}
+	if instance.Host != "localhost" || instance.Port != "8080" {
+		t.Fatalf("instance = %#v, want localhost:8080", instance)
+	}
 }
 
 func TestRegisterReturnsErrorWhenGlobalMissing(t *testing.T) {
@@ -68,10 +88,25 @@ func TestRegisterReturnsErrorWhenEndpointsMissing(t *testing.T) {
 	registerer := NewRegisterer()
 
 	err := registerer.Register(Settings{
+		ServiceName: "order-service",
 		Global: &GlobalSettings{
 			Auth: validAuthSettings(),
 		},
 	}, "localhost", "8080")
+	if err == nil {
+		t.Fatal("Register returned nil error")
+	}
+	if !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("error = %v, want ErrInvalidSettings", err)
+	}
+}
+
+func TestRegisterReturnsErrorWhenServiceNameMissing(t *testing.T) {
+	registerer := NewRegisterer()
+	settings := validSettings()
+	settings.ServiceName = " "
+
+	err := registerer.Register(settings, "localhost", "8080")
 	if err == nil {
 		t.Fatal("Register returned nil error")
 	}
@@ -98,7 +133,7 @@ func TestRouteRuntimeConfigReturnsEntries(t *testing.T) {
 	}
 }
 
-func TestRegisterUpsertsSettingsByHostPort(t *testing.T) {
+func TestRegisterStoresMultipleInstancesByServiceName(t *testing.T) {
 	registerer := NewRegisterer()
 
 	if err := registerer.Register(validSettings(), "localhost", "8080"); err != nil {
@@ -114,10 +149,19 @@ func TestRegisterUpsertsSettingsByHostPort(t *testing.T) {
 	if _, err := registerer.routeRegistry.RouteInfos("localhost:8081"); err != nil {
 		t.Fatalf("RouteInfos returned error for second service: %v", err)
 	}
+
+	service, found := registerer.store.ServiceFor("order-service")
+	if !found {
+		t.Fatal("ServiceFor did not find order-service")
+	}
+	if len(service.Instances) != 2 {
+		t.Fatalf("len(service.Instances) = %d, want %d", len(service.Instances), 2)
+	}
 }
 
 func validSettings() Settings {
 	return Settings{
+		ServiceName: "order-service",
 		Global: &GlobalSettings{
 			Auth: validAuthSettings(),
 		},

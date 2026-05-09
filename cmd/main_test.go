@@ -194,6 +194,7 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 				"in-flight": 50,
 			},
 		},
+		"service-name": "order-service",
 		"endpoints": []map[string]any{
 			{
 				"path":   "/orders",

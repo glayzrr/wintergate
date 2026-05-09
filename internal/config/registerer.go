@@ -15,6 +15,7 @@ import (
 type Registerer struct {
 	authRegistry  *authconfig.Registry
 	routeRegistry *routeconfig.Registry
+	store         *Store
 }
 
 // NewRegisterer 설정 정보 등록용 Registerer를 생성합니다.
@@ -22,6 +23,7 @@ func NewRegisterer() *Registerer {
 	return &Registerer{
 		authRegistry:  authconfig.NewRegistry(),
 		routeRegistry: routeconfig.NewRegistry(),
+		store:         NewStore(),
 	}
 }
 
@@ -35,10 +37,19 @@ func (r *Registerer) RouteRegistry() *routeconfig.Registry {
 	return r.routeRegistry
 }
 
-// Register 설정 정보를 요청 헤더의 host:port에 대응하는 런타임 저장소에 반영합니다.
+// Store 서비스 라우팅과 인스턴스 런타임 저장소를 반환합니다.
+func (r *Registerer) Store() *Store {
+	return r.store
+}
+
+// Register 설정 정보를 요청 서비스와 현재 인스턴스에 대응하는 런타임 저장소에 반영합니다.
 func (r *Registerer) Register(settings Settings, host, port string) error {
 	if settings.Global == nil {
 		return fmt.Errorf("%w: global settings is required", ErrInvalidSettings)
+	}
+
+	if normalizeServiceName(settings.ServiceName) == "" {
+		return fmt.Errorf("%w: service-name is required", ErrInvalidSettings)
 	}
 	if len(settings.Endpoints) == 0 {
 		return fmt.Errorf("%w: endpoints are required", ErrInvalidSettings)
@@ -52,6 +63,12 @@ func (r *Registerer) Register(settings Settings, host, port string) error {
 	authRuntimeConfig, err := r.registerAuthConfig(settings.Global.Auth)
 	if err != nil {
 		return err
+	}
+
+	if r.store != nil {
+		if err := r.store.RegisterService(settings, InstanceSettings{Host: host, Port: port}); err != nil {
+			return fmt.Errorf("register service settings: %w", err)
+		}
 	}
 
 	if err := r.authRegistry.RegisterFor(configKey, authRuntimeConfig); err != nil {

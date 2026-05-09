@@ -8,7 +8,7 @@ import (
 func TestSettingsUnmarshalParsesGlobalThresholdAndEndpoints(t *testing.T) {
 	var settings Settings
 
-	err := json.Unmarshal([]byte(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]},{"path":"/v3/api-docs/**","method":"GET","roles":[]}]}`), &settings)
+	err := json.Unmarshal([]byte(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"service-name":"order-service","threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]},{"path":"/v3/api-docs/**","method":"GET","roles":[]}]}`), &settings)
 	if err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
@@ -23,6 +23,10 @@ func TestSettingsUnmarshalParsesGlobalThresholdAndEndpoints(t *testing.T) {
 
 	if settings.Threshold == nil {
 		t.Fatal("settings.Threshold is nil")
+	}
+
+	if settings.ServiceName != "order-service" {
+		t.Fatalf("settings.ServiceName = %q, want %q", settings.ServiceName, "order-service")
 	}
 
 	if settings.Threshold.Hot.InFlight != 14 {
