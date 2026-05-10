@@ -1,11 +1,8 @@
 package configapi
 
 const (
-	// ConfigRoute 설정 정보를 수신하는 기본 API 경로입니다.
-	ConfigRoute = "/api/config"
-
-	requestHeaderHost = "X-Service-Host"
-	requestHeaderPort = "X-Service-Port"
+	// ConfigApplyRoute 설정 정보를 수신하는 기본 API 경로입니다.
+	ConfigApplyRoute = "/api/config"
 
 	responseRegisterSuccess = "config registered"
 	responseBindFailed      = "invalid config payload"

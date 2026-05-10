@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	internalconfig "wintergate/internal/config"
 
 	routeconfig "wintergate/internal/route/config"
 )
@@ -15,6 +16,7 @@ type RouteTask struct {
 // RouteProvider HTTP method와 path에 대응하는 라우팅 정보를 조회합니다.
 type RouteProvider interface {
 	RouteFor(method, path string) (routeconfig.RouteInfo, bool)
+	NextInstance(serviceName string) (internalconfig.InstanceSettings, error)
 }
 
 // NewRouteTask 라우트 정책 조회용 RouteTask를 생성합니다.
@@ -35,6 +37,12 @@ func (t *RouteTask) Run(_ context.Context, state *State) error {
 	if !found {
 		return fmt.Errorf("%w: route %s %s", routeconfig.ErrConfigNotFound, state.Request.Method, state.Request.Path)
 	}
+
+	instance, err := t.provider.NextInstance(routeInfo.ServiceName)
+	if err != nil {
+		return fmt.Errorf("select service instance: %w", err)
+	}
+	routeInfo.Instance = instance
 
 	state.Request.ServiceName = routeInfo.ServiceName
 	state.Route = &routeInfo

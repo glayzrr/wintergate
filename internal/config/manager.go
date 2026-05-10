@@ -2,13 +2,14 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"wintergate/internal/utils"
 )
 
 // Applier 설정 변경을 자신의 런타임 상태에 반영합니다.
 type Applier interface {
-	Apply(settings Settings, host, port string) error
+	Apply(settings Settings) error
 }
 
 // Manager 설정 정보를 등록된 Applier들에게 전달합니다.
@@ -29,7 +30,7 @@ func (m *Manager) AddApplier(applier Applier) {
 }
 
 // Register 설정 정보를 검증한 뒤 등록된 Applier들에게 전달합니다.
-func (m *Manager) Register(settings Settings, host, port string) error {
+func (m *Manager) Register(settings Settings) error {
 	if settings.Global == nil {
 		return fmt.Errorf("%w: global settings is required", ErrInvalidSettings)
 	}
@@ -40,8 +41,14 @@ func (m *Manager) Register(settings Settings, host, port string) error {
 	if len(settings.Endpoints) == 0 {
 		return fmt.Errorf("%w: endpoints are required", ErrInvalidSettings)
 	}
+	if settings.Instance == nil {
+		return fmt.Errorf("%w: instance is required", ErrInvalidSettings)
+	}
+	if normalizedScheme := strings.ToLower(strings.TrimSpace(settings.Instance.Scheme)); normalizedScheme != "http" && normalizedScheme != "https" {
+		return fmt.Errorf("%w: instance scheme is required", ErrInvalidSettings)
+	}
 
-	if _, err := utils.ConfigKey(host, port); err != nil {
+	if _, err := utils.ConfigKey(settings.Instance.Host, settings.Instance.Port); err != nil {
 		return fmt.Errorf("%w: config address: %w", ErrInvalidSettings, err)
 	}
 
@@ -50,7 +57,7 @@ func (m *Manager) Register(settings Settings, host, port string) error {
 			return fmt.Errorf("%w: applier is required", ErrInvalidSettings)
 		}
 
-		if err := applier.Apply(settings, host, port); err != nil {
+		if err := applier.Apply(settings); err != nil {
 			return fmt.Errorf("apply config to component %T: %w", applier, err)
 		}
 	}

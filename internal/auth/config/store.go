@@ -27,7 +27,7 @@ func NewStore() *Store {
 }
 
 // Apply 전달받은 서비스 설정의 auth를 서비스 이름별 인증 설정으로 반영합니다.
-func (s *Store) Apply(settings internalconfig.Settings, _, _ string) error {
+func (s *Store) Apply(settings internalconfig.Settings) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidConfig)
 	}

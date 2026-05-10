@@ -27,9 +27,6 @@ func NewOrchestrator(tasks ...Task) *Orchestrator {
 // Receive 게이트웨이로 들어온 요청에 대해 등록된 작업을 순차 실행합니다.
 func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
 	trimmedServiceName := strings.TrimSpace(request.ServiceName)
-	trimmedScheme := strings.TrimSpace(request.Scheme)
-	trimmedHost := strings.TrimSpace(request.Host)
-	trimmedPort := strings.TrimSpace(request.Port)
 	trimmedMethod := strings.TrimSpace(request.Method)
 	if trimmedMethod == "" {
 		return fmt.Errorf("%w: method is required", ErrInvalidRequest)
@@ -43,9 +40,6 @@ func (o *Orchestrator) Receive(ctx context.Context, request Request) error {
 	state := &State{
 		Request: Request{
 			ID:                  request.ID,
-			Scheme:              trimmedScheme,
-			Host:                trimmedHost,
-			Port:                trimmedPort,
 			ServiceName:         trimmedServiceName,
 			Method:              trimmedMethod,
 			Path:                trimmedPath,

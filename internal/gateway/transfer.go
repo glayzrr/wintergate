@@ -46,9 +46,12 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 	if t.provider == nil {
 		return fmt.Errorf("%w: pool provider is required", ErrInvalidRequest)
 	}
+	if state.Route == nil {
+		return fmt.Errorf("%w: route is required", ErrInvalidRequest)
+	}
 
-	// nginx가 전달한 scheme, host, port를 업스트림 요청 URL로 변환합니다.
-	upstreamHost, err := upstreamHost(state.Request.Scheme, state.Request.Host, state.Request.Port)
+	instance := state.Route.Instance
+	upstreamHost, err := upstreamHost(instance.Scheme, instance.Host, instance.Port)
 	if err != nil {
 		return err
 	}

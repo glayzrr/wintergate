@@ -45,7 +45,7 @@ func NewStore() *Store {
 }
 
 // Apply 전달받은 서비스 설정의 threshold를 서비스 이름별 정책으로 반영합니다.
-func (s *Store) Apply(settings config.Settings, _, _ string) error {
+func (s *Store) Apply(settings config.Settings) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidPolicy)
 	}

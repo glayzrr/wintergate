@@ -5,6 +5,7 @@ import "encoding/json"
 // Settings 외부에서 서비스별로 전달하는 Wintergate 설정 정보입니다.
 type Settings struct {
 	Global      *GlobalSettings    `json:"global"`
+	Instance    *InstanceSettings  `json:"instance"`
 	ServiceName string             `json:"service-name"`
 	Threshold   *ThresholdSettings `json:"threshold"`
 	Endpoints   []EndpointSettings `json:"endpoints"`
@@ -46,8 +47,9 @@ type EndpointSettings struct {
 
 // InstanceSettings 서비스 인스턴스의 네트워크 주소입니다.
 type InstanceSettings struct {
-	Host string
-	Port string
+	Scheme string `json:"scheme"`
+	Host   string `json:"host"`
+	Port   string `json:"port"`
 }
 
 // ServiceSettings 등록된 서비스 설정과 인스턴스 목록의 스냅샷입니다.

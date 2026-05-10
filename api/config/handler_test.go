@@ -51,7 +51,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodPost,
-		ConfigRoute,
+		ConfigApplyRoute,
 		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`}},"service-name":"order-service","threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
@@ -111,7 +111,7 @@ func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodPost,
-		ConfigRoute,
+		ConfigApplyRoute,
 		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":[]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
@@ -125,8 +125,8 @@ func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
 	if !strings.Contains(logOutput, logConfigRegisterRequested) {
 		t.Fatalf("logOutput = %q, want log message %q", logOutput, logConfigRegisterRequested)
 	}
-	if !strings.Contains(logOutput, ConfigRoute) {
-		t.Fatalf("logOutput = %q, want route %q", logOutput, ConfigRoute)
+	if !strings.Contains(logOutput, ConfigApplyRoute) {
+		t.Fatalf("logOutput = %q, want route %q", logOutput, ConfigApplyRoute)
 	}
 	if !strings.Contains(logOutput, logConfigRegisterPayload) {
 		t.Fatalf("logOutput = %q, want log message %q", logOutput, logConfigRegisterPayload)
@@ -155,7 +155,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenUnknownFieldExists(t *testing.T
 
 	request := httptest.NewRequest(
 		http.MethodPost,
-		ConfigRoute,
+		ConfigApplyRoute,
 		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"route":[{"path":"/api/order","method":"POST","roles":["ADMIN"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
@@ -188,7 +188,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
 	router := gin.New()
 	handler.RegisterRoutes(router)
 
-	request := httptest.NewRequest(http.MethodPost, ConfigRoute, strings.NewReader(`{`))
+	request := httptest.NewRequest(http.MethodPost, ConfigApplyRoute, strings.NewReader(`{`))
 	request.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -222,7 +222,7 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 
 	request := httptest.NewRequest(
 		http.MethodPost,
-		ConfigRoute,
+		ConfigApplyRoute,
 		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service"}},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")

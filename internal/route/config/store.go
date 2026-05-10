@@ -45,7 +45,7 @@ func NewStore() *Store {
 }
 
 // Apply 전달받은 서비스 설정, 현재 인스턴스 주소, 라우팅 기준을 저장소에 반영합니다.
-func (s *Store) Apply(settings internalconfig.Settings, host, port string) error {
+func (s *Store) Apply(settings internalconfig.Settings) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidConfig)
 	}
@@ -61,13 +61,18 @@ func (s *Store) Apply(settings internalconfig.Settings, host, port string) error
 		return fmt.Errorf("%w: endpoints are required", ErrInvalidConfig)
 	}
 
-	normalizedHost, normalizedPort, err := utils.NormalizeHostPort(host, port)
+	if settings.Instance == nil {
+		return fmt.Errorf("%w: instance is required", ErrInvalidConfig)
+	}
+
+	normalizedHost, normalizedPort, err := utils.NormalizeHostPort(settings.Instance.Host, settings.Instance.Port)
 	if err != nil {
 		return fmt.Errorf("%w: instance address: %w", ErrInvalidConfig, err)
 	}
 	instance := internalconfig.InstanceSettings{
-		Host: normalizedHost,
-		Port: normalizedPort,
+		Scheme: utils.NormalizeLower(settings.Instance.Scheme),
+		Host:   normalizedHost,
+		Port:   normalizedPort,
 	}
 
 	endpoints, routeInfos, err := routeInfosFromEndpointSettings(serviceName, settings.Endpoints)

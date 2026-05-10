@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 
 	responseapi "wintergate/api/response"
@@ -32,7 +31,7 @@ func NewHandler(manager *internalconfig.Manager) (*Handler, error) {
 
 // RegisterRoutes 설정 수신 엔드포인트를 Gin 라우터에 등록합니다.
 func (h *Handler) RegisterRoutes(router gin.IRouter) {
-	router.POST(ConfigRoute, h.EnrollConfig)
+	router.POST(ConfigApplyRoute, h.EnrollConfig)
 }
 
 // EnrollConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
@@ -73,26 +72,7 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		ctx.ClientIP(),
 	)
 
-	host, port := ctx.GetHeader(requestHeaderHost), ctx.GetHeader(requestHeaderPort)
-	if host == "" && port == "" {
-		var err error
-		host, port, err = net.SplitHostPort(ctx.Request.RemoteAddr)
-		if err != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
-				Success: false,
-				Message: responseRegisterFailed,
-			})
-			return
-		}
-	} else if host == "" || port == "" {
-		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
-			Success: false,
-			Message: responseRegisterFailed,
-		})
-		return
-	}
-
-	if err := h.manager.Register(settings, host, port); err != nil {
+	if err := h.manager.Register(settings); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
 			Success: false,
 			Message: responseRegisterFailed,
