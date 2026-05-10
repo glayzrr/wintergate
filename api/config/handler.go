@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 
 	responseapi "wintergate/api/response"
@@ -72,7 +73,26 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		ctx.ClientIP(),
 	)
 
-	if err := h.manager.Register(settings, ctx.GetHeader(requestHeaderHost), ctx.GetHeader(requestHeaderPort)); err != nil {
+	host, port := ctx.GetHeader(requestHeaderHost), ctx.GetHeader(requestHeaderPort)
+	if host == "" && port == "" {
+		var err error
+		host, port, err = net.SplitHostPort(ctx.Request.RemoteAddr)
+		if err != nil {
+			ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
+				Success: false,
+				Message: responseRegisterFailed,
+			})
+			return
+		}
+	} else if host == "" || port == "" {
+		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
+			Success: false,
+			Message: responseRegisterFailed,
+		})
+		return
+	}
+
+	if err := h.manager.Register(settings, host, port); err != nil {
 		ctx.AbortWithStatusJSON(http.StatusBadRequest, responseapi.APIResponse{
 			Success: false,
 			Message: responseRegisterFailed,
