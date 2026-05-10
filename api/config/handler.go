@@ -31,11 +31,11 @@ func NewHandler(manager *internalconfig.Manager) (*Handler, error) {
 
 // RegisterRoutes 설정 수신 엔드포인트를 Gin 라우터에 등록합니다.
 func (h *Handler) RegisterRoutes(router gin.IRouter) {
-	router.POST(ConfigApplyRoute, h.EnrollConfig)
+	router.POST(ConfigApplyRoute, h.ApplyConfig)
 }
 
-// EnrollConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
-func (h *Handler) EnrollConfig(ctx *gin.Context) {
+// ApplyConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
+func (h *Handler) ApplyConfig(ctx *gin.Context) {
 	slog.Info(
 		logConfigRegisterRequested,
 		logAttrMethod,
@@ -84,6 +84,10 @@ func (h *Handler) EnrollConfig(ctx *gin.Context) {
 		Success: true,
 		Message: responseRegisterSuccess,
 	})
+}
+
+func (h *Handler) ConfigFor(ctx *gin.Context) {
+
 }
 
 func decodeSettings(body io.Reader, settings *internalconfig.Settings) error {

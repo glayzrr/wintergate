@@ -1,6 +1,10 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
 
 // Settings 외부에서 서비스별로 전달하는 Wintergate 설정 정보입니다.
 type Settings struct {
@@ -50,6 +54,35 @@ type InstanceSettings struct {
 	Scheme string `json:"scheme"`
 	Host   string `json:"host"`
 	Port   string `json:"port"`
+}
+
+// UnmarshalJSON instance port를 숫자 또는 문자열 JSON 값에서 읽습니다.
+func (s *InstanceSettings) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Scheme string          `json:"scheme"`
+		Host   string          `json:"host"`
+		Port   json.RawMessage `json:"port"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("decode instance settings: %w", err)
+	}
+
+	s.Scheme = raw.Scheme
+	s.Host = raw.Host
+
+	var portString string
+	if err := json.Unmarshal(raw.Port, &portString); err == nil {
+		s.Port = portString
+		return nil
+	}
+
+	var portNumber int
+	if err := json.Unmarshal(raw.Port, &portNumber); err == nil {
+		s.Port = strconv.Itoa(portNumber)
+		return nil
+	}
+
+	return fmt.Errorf("decode instance port")
 }
 
 // ServiceSettings 등록된 서비스 설정과 인스턴스 목록의 스냅샷입니다.
