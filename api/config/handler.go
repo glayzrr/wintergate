@@ -32,6 +32,7 @@ func NewHandler(manager *internalconfig.Manager) (*Handler, error) {
 // RegisterRoutes 설정 수신 엔드포인트를 Gin 라우터에 등록합니다.
 func (h *Handler) RegisterRoutes(router gin.IRouter) {
 	router.POST(ConfigApplyRoute, h.ApplyConfig)
+	router.GET(ConfigForRoute, h.ConfigFor)
 }
 
 // ApplyConfig 전달받은 설정 정보를 내부 저장소에 반영합니다.
@@ -87,7 +88,20 @@ func (h *Handler) ApplyConfig(ctx *gin.Context) {
 }
 
 func (h *Handler) ConfigFor(ctx *gin.Context) {
+	settings, found := h.manager.ConfigFor(ctx.Param("serviceName"))
+	if !found {
+		ctx.AbortWithStatusJSON(http.StatusNotFound, responseapi.APIResponse{
+			Success: false,
+			Message: responseConfigNotFound,
+		})
+		return
+	}
 
+	ctx.JSON(http.StatusOK, responseapi.APIResponse{
+		Success: true,
+		Message: responseConfigFound,
+		Data:    settings,
+	})
 }
 
 func decodeSettings(body io.Reader, settings *internalconfig.Settings) error {

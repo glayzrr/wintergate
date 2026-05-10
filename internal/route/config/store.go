@@ -151,28 +151,6 @@ func (s *Store) RouteFor(method, path string) (RouteInfo, bool) {
 	return RouteInfo{}, false
 }
 
-// ServiceFor 지정한 서비스 이름에 대응하는 설정 스냅샷을 반환합니다.
-func (s *Store) ServiceFor(serviceName string) (internalconfig.ServiceSettings, bool) {
-	if s == nil {
-		return internalconfig.ServiceSettings{}, false
-	}
-
-	normalizedServiceName := utils.NormalizeServiceName(serviceName)
-	if normalizedServiceName == "" {
-		return internalconfig.ServiceSettings{}, false
-	}
-
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	record, found := s.services[normalizedServiceName]
-	if !found {
-		return internalconfig.ServiceSettings{}, false
-	}
-
-	return cloneServiceSettings(record), true
-}
-
 // NextInstance 지정한 서비스의 다음 인스턴스를 라운드로빈 순서로 반환합니다.
 func (s *Store) NextInstance(serviceName string) (internalconfig.InstanceSettings, error) {
 	if s == nil {
@@ -307,16 +285,6 @@ func cloneRouteInfo(routeInfo RouteInfo) RouteInfo {
 		Path:        routeInfo.Path,
 		HttpMethod:  routeInfo.HttpMethod,
 		Roles:       append([]string(nil), routeInfo.Roles...),
-	}
-}
-
-func cloneServiceSettings(record serviceInfo) internalconfig.ServiceSettings {
-	return internalconfig.ServiceSettings{
-		ServiceName: record.serviceName,
-		Global:      cloneGlobalSettings(record.global),
-		Threshold:   cloneThresholdSettings(record.threshold),
-		Endpoints:   cloneEndpointSettings(record.endpoints),
-		Instances:   append([]internalconfig.InstanceSettings(nil), record.instances...),
 	}
 }
 
