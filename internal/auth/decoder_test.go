@@ -52,7 +52,7 @@ func TestDecoderReplaceProviderStoresProvider(t *testing.T) {
 }
 
 func TestBearerTokenReturnsToken(t *testing.T) {
-	token, err := BearerToken("Bearer abc.def.ghi")
+	token, err := BearerTokenFor("Bearer abc.def.ghi")
 	if err != nil {
 		t.Fatalf("BearerToken returned error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestBearerTokenReturnsToken(t *testing.T) {
 }
 
 func TestBearerTokenReturnsErrorWhenHeaderInvalid(t *testing.T) {
-	_, err := BearerToken("Basic abc.def.ghi")
+	_, err := BearerTokenFor("Basic abc.def.ghi")
 	if err == nil {
 		t.Fatal("BearerToken returned nil error")
 	}
@@ -74,7 +74,7 @@ func TestBearerTokenReturnsErrorWhenHeaderInvalid(t *testing.T) {
 }
 
 func TestBearerTokenReturnsErrorWhenTokenMissing(t *testing.T) {
-	_, err := BearerToken("Bearer")
+	_, err := BearerTokenFor("Bearer")
 	if err == nil {
 		t.Fatal("BearerToken returned nil error")
 	}

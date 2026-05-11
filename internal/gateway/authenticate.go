@@ -10,10 +10,6 @@ import (
 
 // TokenDecoder Bearer 토큰을 검증하고 claims를 반환하는 계약입니다.
 type TokenDecoder interface {
-	Decode(token string) (internalauth.Claims, error)
-}
-
-type serviceNameTokenDecoder interface {
 	DecodeFor(serviceName, token string) (internalauth.Claims, error)
 }
 
@@ -35,7 +31,7 @@ func (t *AuthenticateTask) Run(_ context.Context, state *State) error {
 	}
 
 	// Authorization 헤더에서 Bearer 토큰 값만 분리합니다.
-	token, err := internalauth.BearerToken(state.Request.AuthorizationHeader)
+	token, err := internalauth.BearerTokenFor(state.Request.AuthorizationHeader)
 	if err != nil {
 		return fmt.Errorf("extract bearer token: %w", err)
 	}
@@ -46,12 +42,7 @@ func (t *AuthenticateTask) Run(_ context.Context, state *State) error {
 	}
 
 	// 토큰 서명과 claims를 검증하고 이후 task에서 사용할 수 있도록 저장합니다.
-	var claims internalauth.Claims
-	if decoder, ok := t.decoder.(serviceNameTokenDecoder); ok {
-		claims, err = decoder.DecodeFor(state.Request.ServiceName, token)
-	} else {
-		claims, err = t.decoder.Decode(token)
-	}
+	claims, err := t.decoder.DecodeFor(state.Request.ServiceName, token)
 	if err != nil {
 		return fmt.Errorf("decode bearer token: %w", err)
 	}

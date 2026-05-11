@@ -25,18 +25,18 @@ const (
 
 // Decoder 인증 설정을 바탕으로 JWT를 검증하고 claims를 추출합니다.
 type Decoder struct {
-	provider AuthConfigProvider
+	provider ConfigProvider
 	now      func() time.Time
 }
 
-// AuthConfigProvider 설정 키별 인증 설정과 공개키를 조회합니다.
-type AuthConfigProvider interface {
-	SnapshotFor(configKey string) (authconfig.Config, bool)
-	PublicKeyFor(configKey, kid string) (*rsa.PublicKey, error)
+// ConfigProvider 설정 키별 인증 설정과 공개키를 조회합니다.
+type ConfigProvider interface {
+	SnapshotFor(serviceName string) (authconfig.Config, bool)
+	PublicKeyFor(serviceName, kid string) (*rsa.PublicKey, error)
 }
 
 // NewDecoder JWT 검증용 Decoder를 생성합니다.
-func NewDecoder(provider AuthConfigProvider) *Decoder {
+func NewDecoder(provider ConfigProvider) *Decoder {
 	return &Decoder{
 		provider: provider,
 		now:      time.Now,
@@ -44,7 +44,7 @@ func NewDecoder(provider AuthConfigProvider) *Decoder {
 }
 
 // ReplaceProvider Decoder가 사용할 인증 설정 조회자를 교체합니다.
-func (d *Decoder) ReplaceProvider(provider AuthConfigProvider) error {
+func (d *Decoder) ReplaceProvider(provider ConfigProvider) error {
 	if provider == nil {
 		return fmt.Errorf("%w: auth config provider is required", ErrNilProvider)
 	}
@@ -54,8 +54,8 @@ func (d *Decoder) ReplaceProvider(provider AuthConfigProvider) error {
 	return nil
 }
 
-// BearerToken Authorization 헤더에서 Bearer 토큰 값을 추출합니다.
-func BearerToken(authorizationHeader string) (string, error) {
+// BearerTokenFor Authorization 헤더에서 Bearer 토큰 값을 추출합니다.
+func BearerTokenFor(authorizationHeader string) (string, error) {
 	fields := strings.Fields(strings.TrimSpace(authorizationHeader))
 	if len(fields) != 2 {
 		return "", fmt.Errorf("%w: bearer token is required", ErrInvalidAuthorizationHeader)
@@ -68,13 +68,8 @@ func BearerToken(authorizationHeader string) (string, error) {
 	return fields[1], nil
 }
 
-// Decode JWT의 서명과 표준 claims를 검증한 뒤 결과를 반환합니다.
-func (d *Decoder) Decode(token string) (Claims, error) {
-	return d.DecodeFor("", token)
-}
-
 // DecodeFor 지정한 설정 키의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
-func (d *Decoder) DecodeFor(configKey, token string) (Claims, error) {
+func (d *Decoder) DecodeFor(serviceName, token string) (Claims, error) {
 	trimmedToken := strings.TrimSpace(token)
 	if trimmedToken == "" {
 		return Claims{}, fmt.Errorf("%w: token is required", ErrInvalidToken)
@@ -84,7 +79,7 @@ func (d *Decoder) DecodeFor(configKey, token string) (Claims, error) {
 		return Claims{}, fmt.Errorf("%w: auth config provider is required", ErrConfigUnavailable)
 	}
 
-	cfg, found := d.provider.SnapshotFor(configKey)
+	cfg, found := d.provider.SnapshotFor(serviceName)
 	if !found {
 		return Claims{}, fmt.Errorf("%w: auth config is not registered", ErrConfigUnavailable)
 	}
@@ -99,7 +94,7 @@ func (d *Decoder) DecodeFor(configKey, token string) (Claims, error) {
 		return Claims{}, err
 	}
 
-	if err := d.verifySignature(context.Background(), configKey, cfg, header, headerPayload.signingInput, signature); err != nil {
+	if err := d.verifySignature(context.Background(), serviceName, cfg, header, headerPayload.signingInput, signature); err != nil {
 		return Claims{}, err
 	}
 
@@ -188,7 +183,7 @@ func decodeClaims(payload []byte) (decodedClaims, error) {
 	}, nil
 }
 
-func (d *Decoder) verifySignature(_ context.Context, configKey string, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
+func (d *Decoder) verifySignature(_ context.Context, serviceName string, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
 	if header.Algorithm != cfg.JWTAlgorithm {
 		return fmt.Errorf("%w: expected %q, got %q", ErrUnsupportedAlgorithm, cfg.JWTAlgorithm, header.Algorithm)
 	}
@@ -211,7 +206,7 @@ func (d *Decoder) verifySignature(_ context.Context, configKey string, cfg authc
 			return fmt.Errorf("%w: kid is required", ErrInvalidToken)
 		}
 
-			publicKey, err := d.provider.PublicKeyFor(configKey, trimmedKeyID)
+		publicKey, err := d.provider.PublicKeyFor(serviceName, trimmedKeyID)
 		if err != nil {
 			return fmt.Errorf("load public key: %w", err)
 		}

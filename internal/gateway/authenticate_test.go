@@ -100,7 +100,7 @@ type stubTokenDecoder struct {
 	err    error
 }
 
-func (d stubTokenDecoder) Decode(string) (internalauth.Claims, error) {
+func (d stubTokenDecoder) DecodeFor(_, _ string) (internalauth.Claims, error) {
 	if d.err != nil {
 		return internalauth.Claims{}, d.err
 	}
