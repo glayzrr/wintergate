@@ -252,7 +252,7 @@ type Claims struct {
 <a name="ConfigProvider"></a>
 ## type ConfigProvider
 
-ConfigProvider 설정 키별 인증 설정과 공개키를 조회합니다.
+ConfigProvider 서비스 이름별 인증 설정과 공개키를 조회합니다.
 
 ```go
 type ConfigProvider interface {
@@ -288,7 +288,7 @@ NewDecoder JWT 검증용 Decoder를 생성합니다.
 func (d *Decoder) DecodeFor(serviceName, token string) (Claims, error)
 ```
 
-DecodeFor 지정한 설정 키의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
+DecodeFor 지정한 서비스 이름의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
 
 <a name="Decoder.ReplaceProvider"></a>
 ### func \(\*Decoder\) ReplaceProvider
