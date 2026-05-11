@@ -15,6 +15,7 @@ type PoolObservation struct {
 	ConfigKey string
 	Tier      string
 	Dedicated bool
+	Instance  string
 }
 
 // PoolResult 커넥션 풀을 사용한 업스트림 요청 결과입니다.
@@ -53,7 +54,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 				Name:      "selections_total",
 				Help:      "Total number of connection pool selections.",
 			},
-			[]string{labelService, labelTier, labelPool},
+			[]string{labelService, labelTier, labelPool, labelUpstream},
 		),
 		// 업스트림 요청의 최종 상태 코드를 pool 선택 결과와 함께 누적합니다.
 		requests: prometheus.NewCounterVec(
@@ -63,7 +64,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 				Name:      "requests_total",
 				Help:      "Total number of upstream requests.",
 			},
-			[]string{labelService, labelTier, labelPool, labelStatusCode, labelResult},
+			[]string{labelService, labelTier, labelPool, labelUpstream, labelStatusCode, labelResult},
 		),
 		// 업스트림 요청이 시작된 뒤 응답 헤더를 받은 시점까지의 시간을 기록합니다.
 		duration: prometheus.NewHistogramVec(
@@ -72,9 +73,9 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 				Subsystem: "upstream",
 				Name:      "request_duration_seconds",
 				Help:      "Upstream request duration in seconds.",
-				Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+				Buckets:   requestDurationBuckets,
 			},
-			[]string{labelService, labelTier, labelPool, labelStatusCode, labelResult},
+			[]string{labelService, labelTier, labelPool, labelUpstream, labelStatusCode, labelResult},
 		),
 		// 현재 특정 service/tier/pool 조합을 사용 중인 요청 수를 기록합니다.
 		inFlight: prometheus.NewGaugeVec(
@@ -84,7 +85,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 				Name:      "requests_in_flight",
 				Help:      "Current number of requests using a connection pool.",
 			},
-			[]string{labelService, labelTier, labelPool},
+			[]string{labelService, labelTier, labelPool, labelUpstream},
 		),
 		// httptrace가 알려주는 신규 연결과 재사용 연결 이벤트를 누적합니다.
 		connectionEvents: prometheus.NewCounterVec(
@@ -94,7 +95,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 				Name:      "events_total",
 				Help:      "Total number of upstream connection events.",
 			},
-			[]string{labelService, labelTier, labelPool, labelEvent},
+			[]string{labelService, labelTier, labelPool, labelUpstream, labelEvent},
 		),
 		// Transport에서 커넥션을 얻기까지 걸린 시간을 기록합니다.
 		connectionWait: prometheus.NewHistogramVec(
@@ -103,9 +104,9 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 				Subsystem: "upstream_connection",
 				Name:      "wait_duration_seconds",
 				Help:      "Time spent waiting for an upstream connection.",
-				Buckets:   []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1},
+				Buckets:   connectionWaitDurationBuckets,
 			},
-			[]string{labelService, labelTier, labelPool},
+			[]string{labelService, labelTier, labelPool, labelUpstream},
 		),
 	}
 
@@ -128,23 +129,24 @@ func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 	service := utils.NormalizeMetricValue(observation.ConfigKey, unknown)
 	tier := utils.NormalizeMetricValue(observation.Tier, unknown)
 	pool := poolFor(observation.Dedicated)
+	upstream := utils.NormalizeMetricValue(observation.Instance, unknown)
 
 	// pool 선택은 요청 시작 시점에 한 번만 기록합니다.
-	r.selections.WithLabelValues(service, tier, pool).Inc()
-	r.inFlight.WithLabelValues(service, tier, pool).Inc()
+	r.selections.WithLabelValues(service, tier, pool, upstream).Inc()
+	r.inFlight.WithLabelValues(service, tier, pool, upstream).Inc()
 
 	var once sync.Once
 	return func(result PoolResult) {
 		once.Do(func() {
 			// 요청 종료 시 pool in-flight를 감소시키고 업스트림 결과를 기록합니다.
-			r.inFlight.WithLabelValues(service, tier, pool).Dec()
+			r.inFlight.WithLabelValues(service, tier, pool, upstream).Dec()
 
 			statusCode := utils.NormalizeStatusCode(result.StatusCode, 200)
 			status := strconv.Itoa(statusCode)
 			metricResult := resultFor(statusCode)
 
-			r.requests.WithLabelValues(service, tier, pool, status, metricResult).Inc()
-			r.duration.WithLabelValues(service, tier, pool, status, metricResult).Observe(time.Since(startedAt).Seconds())
+			r.requests.WithLabelValues(service, tier, pool, upstream, status, metricResult).Inc()
+			r.duration.WithLabelValues(service, tier, pool, upstream, status, metricResult).Observe(time.Since(startedAt).Seconds())
 		})
 	}
 }
@@ -153,15 +155,16 @@ func (r *PoolRecorder) recordConnection(observation PoolObservation, connection 
 	service := utils.NormalizeMetricValue(observation.ConfigKey, unknown)
 	tier := utils.NormalizeMetricValue(observation.Tier, unknown)
 	pool := poolFor(observation.Dedicated)
+	upstream := utils.NormalizeMetricValue(observation.Instance, unknown)
 
 	event := connectionEventFor(connection)
-	r.connectionEvents.WithLabelValues(service, tier, pool, event).Inc()
+	r.connectionEvents.WithLabelValues(service, tier, pool, upstream, event).Inc()
 
 	waitDuration := connection.WaitDuration
 	if waitDuration < 0 {
 		waitDuration = 0
 	}
-	r.connectionWait.WithLabelValues(service, tier, pool).Observe(waitDuration.Seconds())
+	r.connectionWait.WithLabelValues(service, tier, pool, upstream).Observe(waitDuration.Seconds())
 }
 
 func connectionEventFor(connection ConnectionObservation) string {

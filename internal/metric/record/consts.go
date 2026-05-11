@@ -7,6 +7,7 @@ const (
 	labelService    = "service"
 	labelTier       = "tier"
 	labelPool       = "pool"
+	labelUpstream   = "upstream_instance"
 	labelRoute      = "route"
 	labelMethod     = "method"
 	labelStatusCode = "status_code"

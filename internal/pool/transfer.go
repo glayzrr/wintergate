@@ -59,6 +59,7 @@ func HandleRequest(address string, w http.ResponseWriter, r *http.Request, assig
 		ConfigKey: assignment.ConfigKey,
 		Tier:      string(assignment.Tier),
 		Dedicated: assignment.Dedicated,
+		Instance:  outReq.URL.Host,
 	}
 
 	// 메트릭 수집을 위해 pool 선택과 upstream 요청 시작 시점을 기록합니다.

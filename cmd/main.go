@@ -16,6 +16,7 @@ import (
 	routeconfig "wintergate/internal/route/config"
 	internaltrace "wintergate/internal/trace"
 
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 )
 
@@ -84,6 +85,8 @@ func newRouter() (*gin.Engine, error) {
 	))
 
 	router := gin.New()
+	pprof.Register(router)
+
 	router.Use(metricObserver)
 	router.Use(gin.Recovery())
 
