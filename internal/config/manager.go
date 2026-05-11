@@ -178,8 +178,9 @@ func cloneThresholdSettings(settings *ThresholdSettings) *ThresholdSettings {
 	}
 
 	return &ThresholdSettings{
-		Hot:   settings.Hot,
-		Super: settings.Super,
+		Normal: settings.Normal,
+		Hot:    settings.Hot,
+		Super:  settings.Super,
 	}
 }
 

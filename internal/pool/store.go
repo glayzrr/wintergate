@@ -17,6 +17,7 @@ type Threshold struct {
 // poolInfo 서비스 이름별 트래픽 분류 정책입니다.
 type poolInfo struct {
 	ConfigKey string
+	Normal    Threshold
 	Hot       Threshold
 	Super     Threshold
 }
@@ -62,6 +63,10 @@ func (s *Store) Apply(settings config.Settings) error {
 
 	policy := poolInfo{
 		ConfigKey: normalizedServiceName,
+		Normal: Threshold{
+			RPS:      settings.Threshold.Normal.RPS,
+			InFlight: settings.Threshold.Normal.InFlight,
+		},
 		Hot: Threshold{
 			RPS:      settings.Threshold.Hot.RPS,
 			InFlight: settings.Threshold.Hot.InFlight,
@@ -72,6 +77,9 @@ func (s *Store) Apply(settings config.Settings) error {
 		},
 	}
 
+	if err := validateThreshold(policy.Normal, "normal"); err != nil {
+		return err
+	}
 	if err := validateThreshold(policy.Hot, "hot"); err != nil {
 		return err
 	}
@@ -142,8 +150,7 @@ func (s *Store) DecisionFor(status Status) Assignment {
 		return decision
 	}
 
-	decision.Tier = decideTier(status, policy)
-	decision.Dedicated = true
+	decision.Tier, decision.Dedicated = decideTier(status, policy)
 
 	return decision
 }
@@ -159,15 +166,18 @@ func validateThreshold(threshold Threshold, name string) error {
 	return nil
 }
 
-func decideTier(status Status, policy poolInfo) Tier {
+func decideTier(status Status, policy poolInfo) (Tier, bool) {
 	if thresholdReached(status, policy.Super) {
-		return TierSuper
+		return TierSuper, true
 	}
 	if thresholdReached(status, policy.Hot) {
-		return TierHot
+		return TierHot, true
+	}
+	if thresholdReached(status, policy.Normal) {
+		return TierNormal, true
 	}
 
-	return TierNormal
+	return DefaultTier(), false
 }
 
 func thresholdReached(status Status, threshold Threshold) bool {

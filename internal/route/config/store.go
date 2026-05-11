@@ -319,8 +319,9 @@ func cloneThresholdSettings(settings *internalconfig.ThresholdSettings) *interna
 	}
 
 	return &internalconfig.ThresholdSettings{
-		Hot:   settings.Hot,
-		Super: settings.Super,
+		Normal: settings.Normal,
+		Hot:    settings.Hot,
+		Super:  settings.Super,
 	}
 }
 

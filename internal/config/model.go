@@ -32,8 +32,9 @@ type AuthSettings struct {
 
 // ThresholdSettings 서비스 트래픽 티어 승격 기준 설정 정보입니다.
 type ThresholdSettings struct {
-	Hot   ThresholdPoint `json:"hot"`
-	Super ThresholdPoint `json:"super"`
+	Normal ThresholdPoint `json:"normal"`
+	Hot    ThresholdPoint `json:"hot"`
+	Super  ThresholdPoint `json:"super"`
 }
 
 // ThresholdPoint 하나의 트래픽 티어 승격 기준값입니다.
