@@ -29,7 +29,7 @@ type Decoder struct {
 	now      func() time.Time
 }
 
-// ConfigProvider 설정 키별 인증 설정과 공개키를 조회합니다.
+// ConfigProvider 서비스 이름별 인증 설정과 공개키를 조회합니다.
 type ConfigProvider interface {
 	SnapshotFor(serviceName string) (authconfig.Config, bool)
 	PublicKeyFor(serviceName, kid string) (*rsa.PublicKey, error)
@@ -68,7 +68,7 @@ func BearerTokenFor(authorizationHeader string) (string, error) {
 	return fields[1], nil
 }
 
-// DecodeFor 지정한 설정 키의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
+// DecodeFor 지정한 서비스 이름의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
 func (d *Decoder) DecodeFor(serviceName, token string) (Claims, error) {
 	trimmedToken := strings.TrimSpace(token)
 	if trimmedToken == "" {
