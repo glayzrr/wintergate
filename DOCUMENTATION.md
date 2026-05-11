@@ -1637,6 +1637,7 @@ type PoolObservation struct {
     ConfigKey string
     Tier      string
     Dedicated bool
+    Instance  string
 }
 ```
 
