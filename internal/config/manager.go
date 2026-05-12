@@ -49,12 +49,19 @@ func (m *Manager) Register(settings Settings) error {
 	if settings.Instance == nil {
 		return fmt.Errorf("%w: instance is required", ErrInvalidSettings)
 	}
-	if normalizedScheme := strings.ToLower(strings.TrimSpace(settings.Instance.Scheme)); normalizedScheme != "http" && normalizedScheme != "https" {
+	normalizedScheme := strings.ToLower(strings.TrimSpace(settings.Instance.Scheme))
+	if normalizedScheme != "http" && normalizedScheme != "https" {
 		return fmt.Errorf("%w: instance scheme is required", ErrInvalidSettings)
 	}
 
-	if _, err := utils.ConfigKey(settings.Instance.Host, settings.Instance.Port); err != nil {
+	normalizedHost, normalizedPort, err := utils.NormalizeHostPort(settings.Instance.Host, settings.Instance.Port)
+	if err != nil {
 		return fmt.Errorf("%w: config address: %w", ErrInvalidSettings, err)
+	}
+	settings.Instance = &InstanceSettings{
+		Scheme: normalizedScheme,
+		Host:   normalizedHost,
+		Port:   normalizedPort,
 	}
 
 	for _, applier := range m.appliers {
@@ -109,10 +116,24 @@ func (m *Manager) addSettings(serviceName string, settings Settings) error {
 		return nil
 	}
 
-	serviceSettings.Instances = append(serviceSettings.Instances, *cloneInstanceSettings(settings.Instance))
+	serviceSettings.Global = cloneGlobalSettings(settings.Global)
+	serviceSettings.Threshold = cloneThresholdSettings(settings.Threshold)
+	serviceSettings.Endpoints = cloneEndpointSettings(settings.Endpoints)
+	serviceSettings.Instances = upsertInstanceSettings(serviceSettings.Instances, *cloneInstanceSettings(settings.Instance))
 	m.configs[normalizedServiceName] = serviceSettings
 
 	return nil
+}
+
+func upsertInstanceSettings(instances []InstanceSettings, next InstanceSettings) []InstanceSettings {
+	for index, instance := range instances {
+		if instance.Host == next.Host && instance.Port == next.Port {
+			instances[index] = next
+			return instances
+		}
+	}
+
+	return append(instances, next)
 }
 
 func convertSettings(serviceName string, settings Settings) ServiceSettings {
