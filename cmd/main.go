@@ -20,7 +20,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const defaultListenAddress = ":1313"
+const (
+	defaultListenAddress  = ":1313"
+	defaultPoolConfigPath = "config/config.yml"
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -30,6 +33,10 @@ func main() {
 }
 
 func run() error {
+	if err := pool.LoadConfig(defaultPoolConfigPath); err != nil {
+		return fmt.Errorf("load pool config: %w", err)
+	}
+
 	// 서버 실행 전에 라우터와 의존성을 구성합니다.
 	router, err := newRouter()
 	if err != nil {
@@ -63,6 +70,8 @@ func newRouter() (*gin.Engine, error) {
 	// 메트릭 레지스트리와 recorder를 같은 라우터 생명주기 안에서 공유합니다.
 	metricRegistry := internalmetric.NewRegistry()
 	metricRecorder := metricrecord.NewRecorder(metricRegistry)
+	poolCoordinator := pool.NewCoordinator()
+	poolForwarder := pool.NewForwarder(poolCoordinator, metricRecorder)
 	metricObserver, err := internalmetric.BuildRequestObserver(metricRecorder)
 	if err != nil {
 		return nil, fmt.Errorf("create metric observer: %w", err)
@@ -74,7 +83,7 @@ func newRouter() (*gin.Engine, error) {
 	traceTask := internalgateway.NewTraceTask(internaltrace.NewGenerator())
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(authStore))
 	authorizeTask := internalgateway.NewAuthorizeTask()
-	transferTask := internalgateway.NewTransferTask(metricRecorder, poolStore)
+	transferTask := internalgateway.NewTransferTask(poolStore, poolForwarder)
 
 	gatewayHandler := gatewayapi.NewHandler(internalgateway.NewOrchestrator(
 		routerTask,

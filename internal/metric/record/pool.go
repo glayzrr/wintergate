@@ -12,10 +12,10 @@ import (
 
 // PoolObservation 커넥션 풀 사용 시작 정보입니다.
 type PoolObservation struct {
-	ConfigKey string
-	Tier      string
-	Dedicated bool
-	Instance  string
+	ServiceName string
+	Tier        string
+	Dedicated   bool
+	Instance    string
 }
 
 // PoolResult 커넥션 풀을 사용한 업스트림 요청 결과입니다.
@@ -126,7 +126,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 
 func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 	startedAt := time.Now()
-	service := utils.NormalizeMetricValue(observation.ConfigKey, unknown)
+	service := utils.NormalizeMetricValue(observation.ServiceName, unknown)
 	tier := utils.NormalizeMetricValue(observation.Tier, unknown)
 	pool := poolFor(observation.Dedicated)
 	upstream := utils.NormalizeMetricValue(observation.Instance, unknown)
@@ -152,7 +152,7 @@ func (r *PoolRecorder) recordPool(observation PoolObservation) PoolDoneFunc {
 }
 
 func (r *PoolRecorder) recordConnection(observation PoolObservation, connection ConnectionObservation) {
-	service := utils.NormalizeMetricValue(observation.ConfigKey, unknown)
+	service := utils.NormalizeMetricValue(observation.ServiceName, unknown)
 	tier := utils.NormalizeMetricValue(observation.Tier, unknown)
 	pool := poolFor(observation.Dedicated)
 	upstream := utils.NormalizeMetricValue(observation.Instance, unknown)

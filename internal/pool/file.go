@@ -10,8 +10,6 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-const defaultConfigPath = "config/config.yml"
-
 type fileConfig struct {
 	Pool filePoolConfig `yaml:"pool"`
 }

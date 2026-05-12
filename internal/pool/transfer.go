@@ -12,6 +12,28 @@ import (
 	metricrecord "wintergate/internal/metric/record"
 )
 
+// Forwarder 결정된 pool client를 사용해 HTTP 요청을 업스트림으로 전달합니다.
+type Forwarder struct {
+	clients  ClientProvider
+	recorder *metricrecord.Recorder
+}
+
+// ForwardRequest 업스트림 전달에 필요한 요청별 데이터입니다.
+type ForwardRequest struct {
+	Address    string
+	Writer     http.ResponseWriter
+	Request    *http.Request
+	Assignment Assignment
+}
+
+// NewForwarder pool client provider와 metric recorder를 사용하는 Forwarder를 생성합니다.
+func NewForwarder(clients ClientProvider, recorder *metricrecord.Recorder) *Forwarder {
+	return &Forwarder{
+		clients:  clients,
+		recorder: recorder,
+	}
+}
+
 // NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
 func NewTransport(tier Tier) (*http.Transport, error) {
 	config, err := ConfigFor(tier)
@@ -40,36 +62,36 @@ func makePool(config Config) (*http.Transport, error) {
 	return transport, nil
 }
 
-// HandleRequest 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
-func HandleRequest(address string, w http.ResponseWriter, r *http.Request, assignment Assignment, recorder *metricrecord.Recorder) error {
-	cachedClient, err := defaultClients.ClientFor(assignment)
+// Handle 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
+func (f *Forwarder) Handle(request ForwardRequest) error {
+	lease, err := f.clients.Acquire(request.Assignment)
 	if err != nil {
 		return err
 	}
-	defer cachedClient.release()
+	defer lease.Finish()
 
 	// 원본 요청을 업스트림 서버로 전달할 수 있는 형태로 복제합니다.
-	outReq, err := upstreamRequest(address, r)
+	outReq, err := upstreamRequest(request.Address, request.Request)
 	if err != nil {
 		return err
 	}
 
 	// pool 선택 결과를 한 번 만들어 요청 메트릭과 connection trace가 같은 label을 사용하게 합니다.
 	poolObservation := metricrecord.PoolObservation{
-		ConfigKey: assignment.ConfigKey,
-		Tier:      string(assignment.Tier),
-		Dedicated: assignment.Dedicated,
-		Instance:  outReq.URL.Host,
+		ServiceName: request.Assignment.ServiceName,
+		Tier:        string(request.Assignment.Tier),
+		Dedicated:   request.Assignment.Dedicated,
+		Instance:    outReq.URL.Host,
 	}
 
 	// 메트릭 수집을 위해 pool 선택과 upstream 요청 시작 시점을 기록합니다.
 	var donePool metricrecord.PoolDoneFunc
-	if recorder != nil {
-		donePool = recorder.RecordPool(poolObservation)
+	if f.recorder != nil {
+		donePool = f.recorder.RecordPool(poolObservation)
 	}
 
 	var getConnAt time.Time
-	if recorder != nil {
+	if f.recorder != nil {
 		trace := &httptrace.ClientTrace{
 			GetConn: func(_ string) {
 				getConnAt = time.Now()
@@ -81,7 +103,7 @@ func HandleRequest(address string, w http.ResponseWriter, r *http.Request, assig
 				}
 
 				// httptrace가 알려준 connection 획득 결과를 record 패키지에 전달해 event label은 내부에서 정합니다.
-				recorder.RecordConnection(poolObservation, metricrecord.ConnectionObservation{
+				f.recorder.RecordConnection(poolObservation, metricrecord.ConnectionObservation{
 					Reused:       info.Reused,
 					WasIdle:      info.WasIdle,
 					WaitDuration: waitDuration,
@@ -93,14 +115,14 @@ func HandleRequest(address string, w http.ResponseWriter, r *http.Request, assig
 	}
 
 	// 선택된 클라이언트로 업스트림에 요청하고 응답을 클라이언트에게 그대로 전달합니다.
-	resp, err := cachedClient.client.Do(outReq)
+	resp, err := lease.Client.Do(outReq)
 	if err != nil {
 		if donePool != nil {
 			donePool(metricrecord.PoolResult{
 				StatusCode: http.StatusBadGateway,
 			})
 		}
-		http.Error(w, "Bad Gateway", http.StatusBadGateway)
+		http.Error(request.Writer, "Bad Gateway", http.StatusBadGateway)
 		return err
 	}
 	defer resp.Body.Close()
@@ -111,11 +133,11 @@ func HandleRequest(address string, w http.ResponseWriter, r *http.Request, assig
 		})
 	}
 
-	copyHeader(w.Header(), resp.Header)
-	removeHopByHopHeaders(w.Header())
-	w.WriteHeader(resp.StatusCode)
+	copyHeader(request.Writer.Header(), resp.Header)
+	removeHopByHopHeaders(request.Writer.Header())
+	request.Writer.WriteHeader(resp.StatusCode)
 
-	if _, err := io.Copy(w, resp.Body); err != nil {
+	if _, err := io.Copy(request.Writer, resp.Body); err != nil {
 		return fmt.Errorf("copy upstream response body: %w", err)
 	}
 

@@ -94,11 +94,17 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/orders?page=1", strings.NewReader(`{"id":1}`))
 	request.Header.Set("X-Request-ID", "request-1")
 	recorder := httptest.NewRecorder()
+	forwarder := NewForwarder(NewCoordinator(), nil)
 
-	if err := HandleRequest(upstream.URL, recorder, request, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierNormal,
-	}, nil); err != nil {
+	if err := forwarder.Handle(ForwardRequest{
+		Address: upstream.URL,
+		Writer:  recorder,
+		Request: request,
+		Assignment: Assignment{
+			ServiceName: "order-service",
+			Tier:        TierNormal,
+		},
+	}); err != nil {
 		t.Fatalf("HandleRequest returned error: %v", err)
 	}
 
@@ -131,14 +137,16 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 	}))
 	defer upstream.Close()
 
-	errCh := handleRequestAsync(t, "order-service", upstream.URL, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierHot,
-		Dedicated: true,
+	coordinator := NewCoordinator()
+	forwarder := NewForwarder(coordinator, nil)
+	errCh := handleRequestAsync(t, forwarder, "order-service", upstream.URL, Assignment{
+		ServiceName: "order-service",
+		Tier:        TierHot,
+		Dedicated:   true,
 	}, 200*time.Millisecond)
 	waitForSignal(t, upstreamStarted, "first upstream request")
 
-	hotClient := dedicatedCachedClient(t, defaultClients, "order-service")
+	hotClient := dedicatedCachedClient(t, coordinator, "order-service")
 	if hotClient.tier != TierHot {
 		t.Fatalf("dedicated tier = %q, want %q", hotClient.tier, TierHot)
 	}
@@ -163,7 +171,7 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 }
 
 func TestClientStoreReusesSharedClient(t *testing.T) {
-	store := newClientStore()
+	store := NewCoordinator()
 	sharedCount, dedicatedCount := store.count()
 	if sharedCount != 3 {
 		t.Fatalf("sharedCount = %d, want %d", sharedCount, 3)
@@ -173,8 +181,8 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 	}
 
 	decision := Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierNormal,
+		ServiceName: "order-service",
+		Tier:        TierNormal,
 	}
 
 	firstClient := mustClient(t, store, decision)
@@ -186,15 +194,15 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 }
 
 func TestClientStoreUsesSharedTierClients(t *testing.T) {
-	store := newClientStore()
+	store := NewCoordinator()
 
 	normalClient := mustClient(t, store, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierNormal,
+		ServiceName: "order-service",
+		Tier:        TierNormal,
 	})
 	hotClient := mustClient(t, store, Assignment{
-		ConfigKey: "payment-service",
-		Tier:      TierHot,
+		ServiceName: "payment-service",
+		Tier:        TierHot,
 	})
 
 	if normalClient == hotClient {
@@ -206,17 +214,17 @@ func TestClientStoreUsesSharedTierClients(t *testing.T) {
 }
 
 func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
-	store := newClientStore()
+	store := NewCoordinator()
 
 	orderClient := mustClient(t, store, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierHot,
-		Dedicated: true,
+		ServiceName: "order-service",
+		Tier:        TierHot,
+		Dedicated:   true,
 	})
 	paymentClient := mustClient(t, store, Assignment{
-		ConfigKey: "payment-service",
-		Tier:      TierHot,
-		Dedicated: true,
+		ServiceName: "payment-service",
+		Tier:        TierHot,
+		Dedicated:   true,
 	})
 
 	if orderClient == paymentClient {
@@ -229,17 +237,17 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 }
 
 func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
-	store := newClientStore()
+	store := NewCoordinator()
 
 	hotClient := mustClient(t, store, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierHot,
-		Dedicated: true,
+		ServiceName: "order-service",
+		Tier:        TierHot,
+		Dedicated:   true,
 	})
 	superClient := mustClient(t, store, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierSuper,
-		Dedicated: true,
+		ServiceName: "order-service",
+		Tier:        TierSuper,
+		Dedicated:   true,
 	})
 
 	if hotClient == superClient {
@@ -254,12 +262,12 @@ func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 }
 
 func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
-	store := newClientStore()
+	store := NewCoordinator()
 
 	dedicatedClient := mustClient(t, store, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierHot,
-		Dedicated: true,
+		ServiceName: "order-service",
+		Tier:        TierHot,
+		Dedicated:   true,
 	})
 	sharedHotClient, found := store.sharedClientForTier(TierHot)
 	if !found {
@@ -267,8 +275,8 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	}
 
 	client := mustClient(t, store, Assignment{
-		ConfigKey: "order-service",
-		Tier:      TierHot,
+		ServiceName: "order-service",
+		Tier:        TierHot,
 	})
 
 	if client.client != sharedHotClient {
@@ -288,19 +296,16 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 func resetDefaultState(t *testing.T) {
 	t.Helper()
 
-	previousClients := defaultClients
 	previousRecorder := defaultRecorder
 
-	defaultClients = newClientStore()
 	defaultRecorder = NewRecorder()
 
 	t.Cleanup(func() {
-		defaultClients = previousClients
 		defaultRecorder = previousRecorder
 	})
 }
 
-func handleRequestAsync(t *testing.T, service, host string, decision Assignment, timeout time.Duration) <-chan error {
+func handleRequestAsync(t *testing.T, forwarder *Forwarder, service, host string, decision Assignment, timeout time.Duration) <-chan error {
 	t.Helper()
 
 	errCh := make(chan error, 1)
@@ -314,13 +319,18 @@ func handleRequestAsync(t *testing.T, service, host string, decision Assignment,
 		doneFunc := StartRecord(service)
 		defer doneFunc()
 
-		errCh <- HandleRequest(host, recorder, request, decision, nil)
+		errCh <- forwarder.Handle(ForwardRequest{
+			Address:    host,
+			Writer:     recorder,
+			Request:    request,
+			Assignment: decision,
+		})
 	}()
 
 	return errCh
 }
 
-func sharedCachedClient(t *testing.T, store *clientStore, tier Tier) *cachedClient {
+func sharedCachedClient(t *testing.T, store *Coordinator, tier Tier) *managedClient {
 	t.Helper()
 
 	store.mu.RLock()
@@ -334,7 +344,7 @@ func sharedCachedClient(t *testing.T, store *clientStore, tier Tier) *cachedClie
 	return client
 }
 
-func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *cachedClient {
+func dedicatedCachedClient(t *testing.T, store *Coordinator, service string) *managedClient {
 	t.Helper()
 
 	store.mu.RLock()
@@ -348,7 +358,7 @@ func dedicatedCachedClient(t *testing.T, store *clientStore, service string) *ca
 	return client
 }
 
-func waitCachedClient(client *cachedClient) <-chan struct{} {
+func waitCachedClient(client *managedClient) <-chan struct{} {
 	done := make(chan struct{})
 
 	go func() {
@@ -408,10 +418,10 @@ func waitForRequestError(t *testing.T, errCh <-chan error) error {
 	return nil
 }
 
-func mustClient(t *testing.T, store *clientStore, decision Assignment) *cachedClient {
+func mustClient(t *testing.T, store *Coordinator, decision Assignment) *managedClient {
 	t.Helper()
 
-	client, err := store.ClientFor(decision)
+	client, err := store.clientFor(decision)
 	if err != nil {
 		t.Fatalf("client returned error: %v", err)
 	}

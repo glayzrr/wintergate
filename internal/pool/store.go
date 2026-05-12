@@ -24,10 +24,10 @@ type poolInfo struct {
 
 // Assignment 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
 type Assignment struct {
-	ConfigKey string
-	Tier      Tier
-	Dedicated bool
-	Status    Status
+	ServiceName string
+	Tier        Tier
+	Dedicated   bool
+	Status      Status
 }
 
 // Store 서비스 이름별 트래픽 분류 정책을 저장합니다.
@@ -131,14 +131,14 @@ func (s *Store) PolicyFor(serviceName string) (poolInfo, bool) {
 	return policy, found
 }
 
-// DecisionFor 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
-func (s *Store) DecisionFor(status Status) Assignment {
+// AssignmentFor 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
+func (s *Store) AssignmentFor(status Status) Assignment {
 	normalizedServiceName := utils.NormalizeServiceName(status.ConfigKey)
 
 	decision := Assignment{
-		ConfigKey: normalizedServiceName,
-		Tier:      DefaultTier(),
-		Status:    status,
+		ServiceName: normalizedServiceName,
+		Tier:        DefaultTier(),
+		Status:      status,
 	}
 	if normalizedServiceName == "" || s == nil {
 		return decision

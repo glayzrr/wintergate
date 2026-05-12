@@ -7,45 +7,40 @@ import (
 	"strconv"
 	"strings"
 
-	metricrecord "wintergate/internal/metric/record"
 	"wintergate/internal/pool"
 )
 
+// PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다.
 type PoolProvider interface {
-	DecisionFor(status pool.Status) pool.Assignment
+	AssignmentFor(status pool.Status) pool.Assignment
+}
+
+// PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다.
+type PoolForwarder interface {
+	Handle(request pool.ForwardRequest) error
 }
 
 // TransferTask 인증과 인가를 통과한 요청을 업스트림 서비스로 전달합니다.
 type TransferTask struct {
-	recorder *metricrecord.Recorder
-	provider PoolProvider
+	provider  PoolProvider
+	forwarder PoolForwarder
 }
 
 // NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
-func NewTransferTask(recorder *metricrecord.Recorder, provider PoolProvider) *TransferTask {
+func NewTransferTask(provider PoolProvider, forwarder PoolForwarder) *TransferTask {
 	return &TransferTask{
-		recorder: recorder,
-		provider: provider,
+		provider:  provider,
+		forwarder: forwarder,
 	}
 }
 
 // Run 현재 요청을 업스트림 host와 port로 전달하고 업스트림 응답을 클라이언트에 기록합니다.
 func (t *TransferTask) Run(_ context.Context, state *State) error {
-	// 업스트림 응답을 그대로 기록해야 하므로 원본 ResponseWriter가 필요합니다.
-	if state.Request.ResponseWriter == nil {
-		return fmt.Errorf("%w: response writer is required", ErrInvalidRequest)
-	}
-	// 원본 요청을 복제해 업스트림으로 전달해야 하므로 HTTP 요청이 필요합니다.
-	if state.Request.HTTPRequest == nil {
-		return fmt.Errorf("%w: http request is required", ErrInvalidRequest)
-	}
 	// RouteTask가 식별한 서비스 이름이 있어야 풀 정책과 트래픽 기록을 적용할 수 있습니다.
 	if strings.TrimSpace(state.Request.ServiceName) == "" {
 		return fmt.Errorf("%w: service-name is required", ErrInvalidRequest)
 	}
-	if t.provider == nil {
-		return fmt.Errorf("%w: pool provider is required", ErrInvalidRequest)
-	}
+
 	if state.Route == nil {
 		return fmt.Errorf("%w: route is required", ErrInvalidRequest)
 	}
@@ -65,10 +60,15 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 		return fmt.Errorf("read pool status: %w", err)
 	}
 
-	decision := t.provider.DecisionFor(status)
+	assignment := t.provider.AssignmentFor(status)
 
 	// 커넥션 풀 정책을 적용해 업스트림으로 요청을 전달하고 응답을 클라이언트에 씁니다.
-	if err := pool.HandleRequest(upstreamHost, state.Request.ResponseWriter, state.Request.HTTPRequest, decision, t.recorder); err != nil {
+	if err := t.forwarder.Handle(pool.ForwardRequest{
+		Address:    upstreamHost,
+		Writer:     state.Request.ResponseWriter,
+		Request:    state.Request.HTTPRequest,
+		Assignment: assignment,
+	}); err != nil {
 		return fmt.Errorf("handle upstream request: %w", err)
 	}
 
