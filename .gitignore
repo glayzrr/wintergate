@@ -1,3 +1,5 @@
 .env
 .idea/
 generate_report.sh
+AGENTS.md
+*.pdf
