@@ -538,6 +538,7 @@ import "wintergate/internal/gateway"
 - [type Orchestrator](<#Orchestrator>)
   - [func NewOrchestrator\(tasks ...Task\) \*Orchestrator](<#NewOrchestrator>)
   - [func \(o \*Orchestrator\) Receive\(ctx context.Context, request Request\) error](<#Orchestrator.Receive>)
+- [type PoolForwarder](<#PoolForwarder>)
 - [type PoolProvider](<#PoolProvider>)
 - [type Request](<#Request>)
 - [type RouteProvider](<#RouteProvider>)
@@ -551,7 +552,7 @@ import "wintergate/internal/gateway"
   - [func NewTraceTask\(generator \*trace.Generator\) \*TraceTask](<#NewTraceTask>)
   - [func \(t \*TraceTask\) Run\(\_ context.Context, state \*State\) error](<#TraceTask.Run>)
 - [type TransferTask](<#TransferTask>)
-  - [func NewTransferTask\(recorder \*metricrecord.Recorder, provider PoolProvider\) \*TransferTask](<#NewTransferTask>)
+  - [func NewTransferTask\(provider PoolProvider, forwarder PoolForwarder\) \*TransferTask](<#NewTransferTask>)
   - [func \(t \*TransferTask\) Run\(\_ context.Context, state \*State\) error](<#TransferTask.Run>)
 
 
@@ -652,14 +653,25 @@ func (o *Orchestrator) Receive(ctx context.Context, request Request) error
 
 Receive 게이트웨이로 들어온 요청에 대해 등록된 작업을 순차 실행합니다.
 
+<a name="PoolForwarder"></a>
+## type PoolForwarder
+
+PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다.
+
+```go
+type PoolForwarder interface {
+    Handle(request pool.ForwardRequest) error
+}
+```
+
 <a name="PoolProvider"></a>
 ## type PoolProvider
 
-
+PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다.
 
 ```go
 type PoolProvider interface {
-    DecisionFor(status pool.Status) pool.Assignment
+    AssignmentFor(status pool.Status) pool.Assignment
 }
 ```
 
@@ -801,7 +813,7 @@ type TransferTask struct {
 ### func NewTransferTask
 
 ```go
-func NewTransferTask(recorder *metricrecord.Recorder, provider PoolProvider) *TransferTask
+func NewTransferTask(provider PoolProvider, forwarder PoolForwarder) *TransferTask
 ```
 
 NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
@@ -917,14 +929,22 @@ import "wintergate/internal/pool"
 
 - [Variables](<#variables>)
 - [func Configure\(configs map\[Tier\]Config, tier Tier\) error](<#Configure>)
-- [func HandleRequest\(address string, w http.ResponseWriter, r \*http.Request, assignment Assignment, recorder \*metricrecord.Recorder\) error](<#HandleRequest>)
 - [func LoadConfig\(path string\) error](<#LoadConfig>)
 - [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
 - [type Assignment](<#Assignment>)
+- [type ClientLease](<#ClientLease>)
+- [type ClientProvider](<#ClientProvider>)
 - [type Config](<#Config>)
   - [func ConfigFor\(tier Tier\) \(Config, error\)](<#ConfigFor>)
+- [type Coordinator](<#Coordinator>)
+  - [func NewCoordinator\(\) \*Coordinator](<#NewCoordinator>)
+  - [func \(p \*Coordinator\) Acquire\(assignment Assignment\) \(ClientLease, error\)](<#Coordinator.Acquire>)
 - [type DoneFunc](<#DoneFunc>)
   - [func StartRecord\(configKey string\) DoneFunc](<#StartRecord>)
+- [type ForwardRequest](<#ForwardRequest>)
+- [type Forwarder](<#Forwarder>)
+  - [func NewForwarder\(clients ClientProvider, recorder \*metricrecord.Recorder\) \*Forwarder](<#NewForwarder>)
+  - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) error](<#Forwarder.Handle>)
 - [type Recorder](<#Recorder>)
   - [func DefaultRecorder\(\) \*Recorder](<#DefaultRecorder>)
   - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
@@ -935,7 +955,7 @@ import "wintergate/internal/pool"
 - [type Store](<#Store>)
   - [func NewStore\(\) \*Store](<#NewStore>)
   - [func \(s \*Store\) Apply\(settings config.Settings\) error](<#Store.Apply>)
-  - [func \(s \*Store\) DecisionFor\(status Status\) Assignment](<#Store.DecisionFor>)
+  - [func \(s \*Store\) AssignmentFor\(status Status\) Assignment](<#Store.AssignmentFor>)
   - [func \(s \*Store\) Delete\(serviceName string\)](<#Store.Delete>)
   - [func \(s \*Store\) PolicyFor\(serviceName string\) \(poolInfo, bool\)](<#Store.PolicyFor>)
 - [type Threshold](<#Threshold>)
@@ -965,15 +985,6 @@ func Configure(configs map[Tier]Config, tier Tier) error
 
 Configure 서버 시작 시 읽은 커넥션 풀 설정을 기본 설정으로 반영합니다.
 
-<a name="HandleRequest"></a>
-## func HandleRequest
-
-```go
-func HandleRequest(address string, w http.ResponseWriter, r *http.Request, assignment Assignment, recorder *metricrecord.Recorder) error
-```
-
-HandleRequest 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
-
 <a name="LoadConfig"></a>
 ## func LoadConfig
 
@@ -999,10 +1010,33 @@ Assignment 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 �
 
 ```go
 type Assignment struct {
-    ConfigKey string
-    Tier      Tier
-    Dedicated bool
-    Status    Status
+    ServiceName string
+    Tier        Tier
+    Dedicated   bool
+    Status      Status
+}
+```
+
+<a name="ClientLease"></a>
+## type ClientLease
+
+ClientLease 요청에 사용할 http.Client와 사용 완료 함수를 묶어 반환합니다.
+
+```go
+type ClientLease struct {
+    Client *http.Client
+    Finish func()
+}
+```
+
+<a name="ClientProvider"></a>
+## type ClientProvider
+
+ClientProvider 요청별 pool 결정 결과에 맞는 http.Client를 대여합니다.
+
+```go
+type ClientProvider interface {
+    Acquire(Assignment) (ClientLease, error)
 }
 ```
 
@@ -1033,6 +1067,35 @@ func ConfigFor(tier Tier) (Config, error)
 
 ConfigFor 지정한 티어의 풀 설정을 반환합니다.
 
+<a name="Coordinator"></a>
+## type Coordinator
+
+Coordinator 공유 pool과 서비스별 전용 pool의 client 생명주기를 관리합니다.
+
+```go
+type Coordinator struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewCoordinator"></a>
+### func NewCoordinator
+
+```go
+func NewCoordinator() *Coordinator
+```
+
+NewCoordinator 현재 pool 설정으로 Coordinator를 생성합니다.
+
+<a name="Coordinator.Acquire"></a>
+### func \(\*Coordinator\) Acquire
+
+```go
+func (p *Coordinator) Acquire(assignment Assignment) (ClientLease, error)
+```
+
+Acquire 요청별 pool 결정 결과에 맞는 http.Client lease를 반환합니다.
+
 <a name="DoneFunc"></a>
 ## type DoneFunc
 
@@ -1050,6 +1113,49 @@ func StartRecord(configKey string) DoneFunc
 ```
 
 StartRecord 기본 Recorder에 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
+
+<a name="ForwardRequest"></a>
+## type ForwardRequest
+
+ForwardRequest 업스트림 전달에 필요한 요청별 데이터입니다.
+
+```go
+type ForwardRequest struct {
+    Address    string
+    Writer     http.ResponseWriter
+    Request    *http.Request
+    Assignment Assignment
+}
+```
+
+<a name="Forwarder"></a>
+## type Forwarder
+
+Forwarder 결정된 pool client를 사용해 HTTP 요청을 업스트림으로 전달합니다.
+
+```go
+type Forwarder struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewForwarder"></a>
+### func NewForwarder
+
+```go
+func NewForwarder(clients ClientProvider, recorder *metricrecord.Recorder) *Forwarder
+```
+
+NewForwarder pool client provider와 metric recorder를 사용하는 Forwarder를 생성합니다.
+
+<a name="Forwarder.Handle"></a>
+### func \(\*Forwarder\) Handle
+
+```go
+func (f *Forwarder) Handle(request ForwardRequest) error
+```
+
+Handle 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
 
 <a name="Recorder"></a>
 ## type Recorder
@@ -1155,14 +1261,14 @@ func (s *Store) Apply(settings config.Settings) error
 
 Apply 전달받은 서비스 설정의 threshold를 서비스 이름별 정책으로 반영합니다.
 
-<a name="Store.DecisionFor"></a>
-### func \(\*Store\) DecisionFor
+<a name="Store.AssignmentFor"></a>
+### func \(\*Store\) AssignmentFor
 
 ```go
-func (s *Store) DecisionFor(status Status) Assignment
+func (s *Store) AssignmentFor(status Status) Assignment
 ```
 
-DecisionFor 등록 정책이 있으면 RPS/in\-flight 기준으로 tier를 결정합니다.
+AssignmentFor 등록 정책이 있으면 RPS/in\-flight 기준으로 tier를 결정합니다.
 
 <a name="Store.Delete"></a>
 ### func \(\*Store\) Delete
@@ -1624,10 +1730,10 @@ PoolObservation 커넥션 풀 사용 시작 정보입니다.
 
 ```go
 type PoolObservation struct {
-    ConfigKey string
-    Tier      string
-    Dedicated bool
-    Instance  string
+    ServiceName string
+    Tier        string
+    Dedicated   bool
+    Instance    string
 }
 ```
 
