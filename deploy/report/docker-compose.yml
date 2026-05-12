@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  grafana-reporter:
+    build: .
+    container_name: grafana-reporter
+    ports:
+      - "8686:8686"
+    environment:
+      - GF_PROTO=http://
+      - GF_HOST=grafana:3000
+      - GF_API_KEY=
+    depends_on:
+      - grafana
+    networks:
+      - monitoring-network
+
+networks:
+  monitoring-network:
+    driver: bridge

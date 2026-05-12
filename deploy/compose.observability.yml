@@ -13,16 +13,21 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    networks:
+      - monitoring-network
 
   grafana:
     image: grafana/grafana:11.3.0
     container_name: wintergate-grafana
     depends_on:
       - prometheus
+      - renderer
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_RENDERING_SERVER_URL: http://wintergate-renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://wintergate-grafana:3000/
     ports:
       - "3000:3000"
     volumes:
@@ -30,6 +35,37 @@ services:
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring-network
+
+  reporter:
+    image: izakmarais/grafana-reporter:latest
+    container_name: grafana-reporter
+    platform: linux/amd64
+    ports:
+      - "8686:8686"
+    command:
+      - -proto
+      - http://
+      - -ip
+      - wintergate-grafana:3000
+    depends_on:
+      - grafana
+    networks:
+      - monitoring-network
+
+  renderer:
+    image: grafana/grafana-image-renderer:latest
+    container_name: wintergate-renderer
+    platform: linux/amd64
+    ports:
+      - "8081:8081"
+    networks:
+      - monitoring-network
+
+networks:
+  monitoring-network:
+    driver: bridge
 
 volumes:
   prometheus-data:
