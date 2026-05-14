@@ -551,8 +551,9 @@ import "wintergate/internal/gateway"
 - [type TraceTask](<#TraceTask>)
   - [func NewTraceTask\(generator \*trace.Generator\) \*TraceTask](<#NewTraceTask>)
   - [func \(t \*TraceTask\) Run\(\_ context.Context, state \*State\) error](<#TraceTask.Run>)
+- [type TrafficRecorder](<#TrafficRecorder>)
 - [type TransferTask](<#TransferTask>)
-  - [func NewTransferTask\(provider PoolProvider, forwarder PoolForwarder\) \*TransferTask](<#NewTransferTask>)
+  - [func NewTransferTask\(provider PoolProvider, forwarder PoolForwarder, recorder TrafficRecorder\) \*TransferTask](<#NewTransferTask>)
   - [func \(t \*TransferTask\) Run\(\_ context.Context, state \*State\) error](<#TransferTask.Run>)
 
 
@@ -562,9 +563,10 @@ import "wintergate/internal/gateway"
 
 ```go
 var (
-    ErrInvalidRequest  = errors.New("invalid request")
-    ErrNilTask         = errors.New("nil task")
-    ErrNilTokenDecoder = errors.New("nil token decoder")
+    ErrInvalidRequest     = errors.New("invalid request")
+    ErrNilTask            = errors.New("nil task")
+    ErrNilTokenDecoder    = errors.New("nil token decoder")
+    ErrNilTrafficRecorder = errors.New("nil traffic recorder")
 )
 ```
 
@@ -798,6 +800,18 @@ func (t *TraceTask) Run(_ context.Context, state *State) error
 
 Run 요청 ID를 상태, 요청 헤더, 응답 헤더에 반영합니다.
 
+<a name="TrafficRecorder"></a>
+## type TrafficRecorder
+
+TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다.
+
+```go
+type TrafficRecorder interface {
+    Start(configKey string) pool.DoneFunc
+    StatusFor(configKey string) (pool.Status, error)
+}
+```
+
 <a name="TransferTask"></a>
 ## type TransferTask
 
@@ -813,7 +827,7 @@ type TransferTask struct {
 ### func NewTransferTask
 
 ```go
-func NewTransferTask(provider PoolProvider, forwarder PoolForwarder) *TransferTask
+func NewTransferTask(provider PoolProvider, forwarder PoolForwarder, recorder TrafficRecorder) *TransferTask
 ```
 
 NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
@@ -940,18 +954,15 @@ import "wintergate/internal/pool"
   - [func NewCoordinator\(\) \*Coordinator](<#NewCoordinator>)
   - [func \(p \*Coordinator\) Acquire\(assignment Assignment\) \(ClientLease, error\)](<#Coordinator.Acquire>)
 - [type DoneFunc](<#DoneFunc>)
-  - [func StartRecord\(configKey string\) DoneFunc](<#StartRecord>)
 - [type ForwardRequest](<#ForwardRequest>)
 - [type Forwarder](<#Forwarder>)
   - [func NewForwarder\(clients ClientProvider, recorder \*metricrecord.Recorder\) \*Forwarder](<#NewForwarder>)
   - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) error](<#Forwarder.Handle>)
 - [type Recorder](<#Recorder>)
-  - [func DefaultRecorder\(\) \*Recorder](<#DefaultRecorder>)
   - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
   - [func \(r \*Recorder\) Start\(configKey string\) DoneFunc](<#Recorder.Start>)
   - [func \(r \*Recorder\) StatusFor\(configKey string\) \(Status, error\)](<#Recorder.StatusFor>)
 - [type Status](<#Status>)
-  - [func StatusFor\(configKey string\) \(Status, error\)](<#StatusFor>)
 - [type Store](<#Store>)
   - [func NewStore\(\) \*Store](<#NewStore>)
   - [func \(s \*Store\) Apply\(settings config.Settings\) error](<#Store.Apply>)
@@ -1105,15 +1116,6 @@ DoneFunc 요청 처리가 끝났을 때 호출해 트래픽 기록을 마무리�
 type DoneFunc func()
 ```
 
-<a name="StartRecord"></a>
-### func StartRecord
-
-```go
-func StartRecord(configKey string) DoneFunc
-```
-
-StartRecord 기본 Recorder에 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
-
 <a name="ForwardRequest"></a>
 ## type ForwardRequest
 
@@ -1168,15 +1170,6 @@ type Recorder struct {
 }
 ```
 
-<a name="DefaultRecorder"></a>
-### func DefaultRecorder
-
-```go
-func DefaultRecorder() *Recorder
-```
-
-DefaultRecorder 패키지 기본 트래픽 Recorder를 반환합니다.
-
 <a name="NewRecorder"></a>
 ### func NewRecorder
 
@@ -1222,15 +1215,6 @@ type Status struct {
     LastSeenAt       time.Time
 }
 ```
-
-<a name="StatusFor"></a>
-### func StatusFor
-
-```go
-func StatusFor(configKey string) (Status, error)
-```
-
-StatusFor 기본 Recorder에서 설정 키별 트래픽 상태를 반환합니다.
 
 <a name="Store"></a>
 ## type Store
