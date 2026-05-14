@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	internalauth "wintergate/internal/auth"
+	routeconfig "wintergate/internal/route/config"
 )
 
 func TestNewAuthenticateTaskReturnsTaskWhenDecoderNil(t *testing.T) {
@@ -24,8 +25,10 @@ func TestAuthenticateTaskRunStoresClaims(t *testing.T) {
 
 	state := &State{
 		Request: Request{
+			ServiceName:         "order-service",
 			AuthorizationHeader: "Bearer token-value",
 		},
+		Route: authRequiredRoute(),
 	}
 
 	err := task.Run(context.Background(), state)
@@ -42,7 +45,7 @@ func TestAuthenticateTaskRunStoresClaims(t *testing.T) {
 	}
 }
 
-func TestAuthenticateTaskRunSkipsWhenAuthorizationHeaderMissing(t *testing.T) {
+func TestAuthenticateTaskRunSkipsWhenRouteDoesNotRequireRoles(t *testing.T) {
 	task := NewAuthenticateTask(stubTokenDecoder{})
 
 	state := &State{}
@@ -62,8 +65,10 @@ func TestAuthenticateTaskRunReturnsWrappedBearerError(t *testing.T) {
 
 	state := &State{
 		Request: Request{
+			ServiceName:         "order-service",
 			AuthorizationHeader: "Basic token-value",
 		},
+		Route: authRequiredRoute(),
 	}
 
 	err := task.Run(context.Background(), state)
@@ -81,8 +86,10 @@ func TestAuthenticateTaskRunReturnsErrorWhenDecoderNil(t *testing.T) {
 
 	state := &State{
 		Request: Request{
+			ServiceName:         "order-service",
 			AuthorizationHeader: "Bearer token-value",
 		},
+		Route: authRequiredRoute(),
 	}
 
 	err := task.Run(context.Background(), state)
@@ -92,6 +99,26 @@ func TestAuthenticateTaskRunReturnsErrorWhenDecoderNil(t *testing.T) {
 
 	if !errors.Is(err, ErrNilTokenDecoder) {
 		t.Fatalf("error = %v, want ErrNilTokenDecoder", err)
+	}
+}
+
+func TestAuthenticateTaskRunReturnsErrorWhenAuthorizationHeaderMissingForProtectedRoute(t *testing.T) {
+	task := NewAuthenticateTask(stubTokenDecoder{})
+
+	state := &State{
+		Request: Request{
+			ServiceName: "order-service",
+		},
+		Route: authRequiredRoute(),
+	}
+
+	err := task.Run(context.Background(), state)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+
+	if !errors.Is(err, internalauth.ErrInvalidAuthorizationHeader) {
+		t.Fatalf("error = %v, want ErrInvalidAuthorizationHeader", err)
 	}
 }
 
@@ -106,4 +133,11 @@ func (d stubTokenDecoder) DecodeFor(_, _ string) (internalauth.Claims, error) {
 	}
 
 	return d.claims, nil
+}
+
+func authRequiredRoute() *routeconfig.RouteInfo {
+	return &routeconfig.RouteInfo{
+		ServiceName: "order-service",
+		Roles:       []string{"ADMIN"},
+	}
 }

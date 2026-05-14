@@ -52,11 +52,9 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigApplyRoute,
-		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`}},"service-name":"order-service","threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"RS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwks":`+jwksPayload+`}},"instance":{"scheme":"http","host":"localhost","port":"8080"},"service-name":"order-service","threshold":{"hot":{"rps":100,"in-flight":14},"super":{"rps":150,"in-flight":50}},"endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Service-Host", "localhost")
-	request.Header.Set("X-Service-Port", "8080")
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
@@ -112,14 +110,16 @@ func TestHandlerEnrollConfigLogsRegisterRequest(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigApplyRoute,
-		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":[]}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service","jwt_secret":"secret"}},"instance":{"scheme":"http","host":"localhost","port":"8080"},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":[]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Service-Host", "localhost")
-	request.Header.Set("X-Service-Port", "8080")
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
 
 	logOutput := logBuffer.String()
 	if !strings.Contains(logOutput, logConfigRegisterRequested) {
@@ -223,11 +223,9 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		ConfigApplyRoute,
-		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service"}},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
+		strings.NewReader(`{"global":{"auth":{"jwt_algorithm":"HS256","jwt_audience":"wintergate","jwt_clock_skew":"1m","jwt_issuer":"auth-service"}},"instance":{"scheme":"http","host":"localhost","port":"8080"},"service-name":"order-service","endpoints":[{"path":"/api/order","method":"POST","roles":["ADMIN","OPS"]}]}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Service-Host", "localhost")
-	request.Header.Set("X-Service-Port", "8080")
 
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)

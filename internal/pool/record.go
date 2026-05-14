@@ -57,26 +57,9 @@ type bucket struct {
 	mu sync.Mutex
 }
 
-var defaultRecorder = NewRecorder()
-
 // NewRecorder 기본 window를 사용하는 트래픽 Recorder를 생성합니다.
 func NewRecorder() *Recorder {
 	return newRecorder(time.Now, defaultWindow)
-}
-
-// DefaultRecorder 패키지 기본 트래픽 Recorder를 반환합니다.
-func DefaultRecorder() *Recorder {
-	return defaultRecorder
-}
-
-// StartRecord 기본 Recorder에 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
-func StartRecord(configKey string) DoneFunc {
-	return DefaultRecorder().Start(configKey)
-}
-
-// StatusFor 기본 Recorder에서 설정 키별 트래픽 상태를 반환합니다.
-func StatusFor(configKey string) (Status, error) {
-	return DefaultRecorder().StatusFor(configKey)
 }
 
 // Start 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.

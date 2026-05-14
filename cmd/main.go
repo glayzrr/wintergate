@@ -72,6 +72,7 @@ func newRouter() (*gin.Engine, error) {
 	metricRecorder := metricrecord.NewRecorder(metricRegistry)
 	poolCoordinator := pool.NewCoordinator()
 	poolForwarder := pool.NewForwarder(poolCoordinator, metricRecorder)
+	trafficRecorder := pool.NewRecorder()
 	metricObserver, err := internalmetric.BuildRequestObserver(metricRecorder)
 	if err != nil {
 		return nil, fmt.Errorf("create metric observer: %w", err)
@@ -83,7 +84,7 @@ func newRouter() (*gin.Engine, error) {
 	traceTask := internalgateway.NewTraceTask(internaltrace.NewGenerator())
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(authStore))
 	authorizeTask := internalgateway.NewAuthorizeTask()
-	transferTask := internalgateway.NewTransferTask(poolStore, poolForwarder)
+	transferTask := internalgateway.NewTransferTask(poolStore, poolForwarder, trafficRecorder)
 
 	gatewayHandler := gatewayapi.NewHandler(internalgateway.NewOrchestrator(
 		routerTask,

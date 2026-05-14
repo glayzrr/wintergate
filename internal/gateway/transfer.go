@@ -20,17 +20,25 @@ type PoolForwarder interface {
 	Handle(request pool.ForwardRequest) error
 }
 
+// TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다.
+type TrafficRecorder interface {
+	Start(configKey string) pool.DoneFunc
+	StatusFor(configKey string) (pool.Status, error)
+}
+
 // TransferTask 인증과 인가를 통과한 요청을 업스트림 서비스로 전달합니다.
 type TransferTask struct {
 	provider  PoolProvider
 	forwarder PoolForwarder
+	recorder  TrafficRecorder
 }
 
 // NewTransferTask 업스트림 전달용 TransferTask를 생성합니다.
-func NewTransferTask(provider PoolProvider, forwarder PoolForwarder) *TransferTask {
+func NewTransferTask(provider PoolProvider, forwarder PoolForwarder, recorder TrafficRecorder) *TransferTask {
 	return &TransferTask{
 		provider:  provider,
 		forwarder: forwarder,
+		recorder:  recorder,
 	}
 }
 
@@ -51,11 +59,15 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 		return err
 	}
 
+	if t.recorder == nil {
+		return fmt.Errorf("%w: traffic recorder is required", ErrNilTrafficRecorder)
+	}
+
 	// 요청 시작과 종료 시점을 기록해 서비스 이름별 트래픽 상태를 갱신합니다.
-	doneFunc := pool.StartRecord(state.Request.ServiceName)
+	doneFunc := t.recorder.Start(state.Request.ServiceName)
 	defer doneFunc()
 
-	status, err := pool.StatusFor(state.Request.ServiceName)
+	status, err := t.recorder.StatusFor(state.Request.ServiceName)
 	if err != nil {
 		return fmt.Errorf("read pool status: %w", err)
 	}

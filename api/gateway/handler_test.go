@@ -139,19 +139,28 @@ func TestHandlerReceiveReturnsBadRequestWhenOrchestratorRejectsRequest(t *testin
 	}
 }
 
-func TestHandlerReceivePassesServiceAddressHeadersToOrchestrator(t *testing.T) {
+func TestHandlerReceivePassesRequestContextToOrchestrator(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	orchestrator := internalgateway.NewOrchestrator(
 		internalgatewayTaskFunc(func(_ context.Context, state *internalgateway.State) error {
-			if state.Request.Host != "localhost" {
-				t.Fatalf("state.Request.Host = %q, want %q", state.Request.Host, "localhost")
+			if state.Request.Method != http.MethodGet {
+				t.Fatalf("state.Request.Method = %q, want %q", state.Request.Method, http.MethodGet)
 			}
-			if state.Request.Port != "8080" {
-				t.Fatalf("state.Request.Port = %q, want %q", state.Request.Port, "8080")
+			if state.Request.Path != "/orders" {
+				t.Fatalf("state.Request.Path = %q, want %q", state.Request.Path, "/orders")
 			}
-			if state.Request.Scheme != "https" {
-				t.Fatalf("state.Request.Scheme = %q, want %q", state.Request.Scheme, "https")
+			if state.Request.AuthorizationHeader != "Bearer token-value" {
+				t.Fatalf("state.Request.AuthorizationHeader = %q, want %q", state.Request.AuthorizationHeader, "Bearer token-value")
+			}
+			if state.Request.HTTPRequest == nil {
+				t.Fatal("state.Request.HTTPRequest is nil")
+			}
+			if state.Request.HTTPRequest.URL.Path != "/orders" {
+				t.Fatalf("state.Request.HTTPRequest.URL.Path = %q, want %q", state.Request.HTTPRequest.URL.Path, "/orders")
+			}
+			if state.Request.ResponseWriter == nil {
+				t.Fatal("state.Request.ResponseWriter is nil")
 			}
 
 			return nil
@@ -163,9 +172,7 @@ func TestHandlerReceivePassesServiceAddressHeadersToOrchestrator(t *testing.T) {
 	handler.RegisterRoutes(router)
 
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
-	request.Header.Set(requestHeaderScheme, "https")
-	request.Header.Set(requestHeaderHost, "localhost")
-	request.Header.Set(requestHeaderPort, "8080")
+	request.Header.Set("Authorization", "Bearer token-value")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
@@ -217,7 +224,7 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 	})
 
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(store))
-	handler := NewHandler(internalgateway.NewOrchestrator(serviceNameTask(), authenticateTask))
+	handler := NewHandler(internalgateway.NewOrchestrator(protectedRouteTask(), authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -253,7 +260,7 @@ func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.
 	})
 
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(store))
-	handler := NewHandler(internalgateway.NewOrchestrator(serviceNameTask(), authenticateTask))
+	handler := NewHandler(internalgateway.NewOrchestrator(protectedRouteTask(), authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -328,9 +335,13 @@ func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgatewa
 	return fn(ctx, state)
 }
 
-func serviceNameTask() internalgateway.Task {
+func protectedRouteTask() internalgateway.Task {
 	return internalgatewayTaskFunc(func(_ context.Context, state *internalgateway.State) error {
 		state.Request.ServiceName = "order-service"
+		state.Route = &routeconfig.RouteInfo{
+			ServiceName: "order-service",
+			Roles:       []string{"USER"},
+		}
 		return nil
 	})
 }
@@ -353,7 +364,7 @@ func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
 		},
 	}
 
-	if err := store.Apply(settings, "", ""); err != nil {
+	if err := store.Apply(settings); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 

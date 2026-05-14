@@ -590,7 +590,7 @@ func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
 		},
 	}
 
-	if err := store.Apply(settings, "", ""); err != nil {
+	if err := store.Apply(settings); err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 

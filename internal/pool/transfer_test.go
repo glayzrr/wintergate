@@ -128,8 +128,6 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 }
 
 func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.T) {
-	resetDefaultState(t)
-
 	upstreamStarted := make(chan struct{}, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamStarted <- struct{}{}
@@ -139,7 +137,8 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 
 	coordinator := NewCoordinator()
 	forwarder := NewForwarder(coordinator, nil)
-	errCh := handleRequestAsync(t, forwarder, "order-service", upstream.URL, Assignment{
+	trafficRecorder := NewRecorder()
+	errCh := handleRequestAsync(t, trafficRecorder, forwarder, "order-service", upstream.URL, Assignment{
 		ServiceName: "order-service",
 		Tier:        TierHot,
 		Dedicated:   true,
@@ -161,7 +160,7 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 
 	waitForDone(t, hotClientDone, time.Second, "dedicated client wait group")
 
-	status, err := StatusFor("order-service")
+	status, err := trafficRecorder.StatusFor("order-service")
 	if err != nil {
 		t.Fatalf("StatusFor returned error: %v", err)
 	}
@@ -293,35 +292,23 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	}
 }
 
-func resetDefaultState(t *testing.T) {
-	t.Helper()
-
-	previousRecorder := defaultRecorder
-
-	defaultRecorder = NewRecorder()
-
-	t.Cleanup(func() {
-		defaultRecorder = previousRecorder
-	})
-}
-
-func handleRequestAsync(t *testing.T, forwarder *Forwarder, service, host string, decision Assignment, timeout time.Duration) <-chan error {
+func handleRequestAsync(t *testing.T, trafficRecorder *Recorder, forwarder *Forwarder, service, host string, decision Assignment, timeout time.Duration) <-chan error {
 	t.Helper()
 
 	errCh := make(chan error, 1)
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
 	ctx, cancel := context.WithTimeout(request.Context(), timeout)
 	request = request.WithContext(ctx)
-	recorder := httptest.NewRecorder()
+	responseRecorder := httptest.NewRecorder()
 
 	go func() {
 		defer cancel()
-		doneFunc := StartRecord(service)
+		doneFunc := trafficRecorder.Start(service)
 		defer doneFunc()
 
 		errCh <- forwarder.Handle(ForwardRequest{
 			Address:    host,
-			Writer:     recorder,
+			Writer:     responseRecorder,
 			Request:    request,
 			Assignment: decision,
 		})

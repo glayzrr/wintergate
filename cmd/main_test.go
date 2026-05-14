@@ -194,6 +194,11 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 				"in-flight": 50,
 			},
 		},
+		"instance": map[string]any{
+			"scheme": upstreamURL.Scheme,
+			"host":   serviceHost,
+			"port":   servicePort,
+		},
 		"service-name": "order-service",
 		"endpoints": []map[string]any{
 			{
@@ -213,8 +218,6 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 		strings.NewReader(string(configBody)),
 	)
 	configRequest.Header.Set("Content-Type", "application/json")
-	configRequest.Header.Set("X-Service-Host", serviceHost)
-	configRequest.Header.Set("X-Service-Port", servicePort)
 	configRequest.RemoteAddr = "192.0.2.10:43123"
 
 	configRecorder := httptest.NewRecorder()
@@ -225,9 +228,6 @@ func TestNewRouterRegistersGatewayIngressRoute(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodGet, "/orders", nil)
-	request.Header.Set("X-Service-Scheme", upstreamURL.Scheme)
-	request.Header.Set("X-Service-Host", serviceHost)
-	request.Header.Set("X-Service-Port", servicePort)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
