@@ -72,7 +72,8 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 		t.Fatalf("response.Message = %q, want %q", response.Message, responseRegisterSuccess)
 	}
 
-	publicKey, err := authStore.PublicKeyFor("order-service", "key-1")
+	snapshot := manager.Settings()
+	publicKey, err := authStore.PublicKeyFor(snapshot, "order-service", "key-1")
 	if err != nil {
 		t.Fatalf("PublicKey returned error: %v", err)
 	}
@@ -81,7 +82,7 @@ func TestHandlerEnrollConfigRegistersJWKSWhenPayloadValid(t *testing.T) {
 		t.Fatal("publicKey does not match the registered key")
 	}
 
-	authRuntimeConfig, authConfigFound := authStore.SnapshotFor("order-service")
+	authRuntimeConfig, authConfigFound := authStore.SnapshotFor(snapshot, "order-service")
 	if !authConfigFound {
 		t.Fatal("Snapshot did not return auth config")
 	}
@@ -255,10 +256,10 @@ func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) respon
 	return response
 }
 
-func newTestManager(appliers ...internalconfig.Applier) *internalconfig.Manager {
+func newTestManager(validators ...internalconfig.Validator) *internalconfig.Manager {
 	manager := internalconfig.NewManager()
-	for _, applier := range appliers {
-		manager.AddApplier(applier)
+	for _, validator := range validators {
+		manager.AddValidator(validator)
 	}
 
 	return manager

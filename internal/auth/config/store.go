@@ -13,20 +13,64 @@ import (
 
 // Store 인증 런타임 설정과 JWKS를 메모리에 보관합니다.
 type Store struct {
-	configs map[string]authInfo
+	provider internalconfig.SettingsProvider
 
-	// mu는 configs map의 동시 조회와 설정 교체를 보호합니다.
+	// mu는 중앙 설정 snapshot provider 교체를 보호합니다.
 	mu sync.RWMutex
 }
 
 // NewStore 빈 인증 설정 Store를 생성합니다.
 func NewStore() *Store {
-	return &Store{
-		configs: make(map[string]authInfo),
-	}
+	return &Store{}
 }
 
-// Apply 전달받은 서비스 설정의 auth를 서비스 이름별 인증 설정으로 반영합니다.
+// UseSettingsProvider 중앙 설정 snapshot 제공자를 등록합니다.
+func (s *Store) UseSettingsProvider(provider internalconfig.SettingsProvider) {
+	if s == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.provider = provider
+}
+
+// Settings 현재 활성 설정 snapshot을 반환합니다.
+func (s *Store) Settings() *internalconfig.Snapshot {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.RLock()
+	provider := s.provider
+	s.mu.RUnlock()
+	if provider == nil {
+		return nil
+	}
+
+	return provider.Settings()
+}
+
+// Validate 후보 스냅샷의 전체 인증 설정이 반영 가능한지 검증합니다.
+func (s *Store) Validate(candidate internalconfig.Snapshot) error {
+	if s == nil {
+		return fmt.Errorf("%w: store is nil", ErrInvalidConfig)
+	}
+
+	for _, service := range candidate.Services {
+		if service.Global == nil {
+			return fmt.Errorf("%w: global settings is required", ErrInvalidConfig)
+		}
+		if _, err := buildAuthInfo(service.Global.Auth); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Apply 중앙 snapshot 전환 이후 인증 설정을 내부 저장소에 복제하지 않습니다.
 func (s *Store) Apply(settings internalconfig.Settings) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidConfig)
@@ -40,39 +84,57 @@ func (s *Store) Apply(settings internalconfig.Settings) error {
 		return fmt.Errorf("%w: service-name is required", ErrInvalidConfig)
 	}
 
-	authInfo, err := buildAuthInfo(settings.Global.Auth)
-	if err != nil {
-		return err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.configs[serviceName] = authInfo
-
-	return nil
+	_, err := buildAuthInfo(settings.Global.Auth)
+	return err
 }
 
 // Snapshot 현재 인증 런타임 설정의 사본을 반환합니다.
 func (s *Store) Snapshot() (Config, bool) {
-	return s.SnapshotFor("")
+	return s.SnapshotFor(s.Settings(), "")
 }
 
 // SnapshotFor 지정한 설정 키의 인증 런타임 설정의 사본을 반환합니다.
-func (s *Store) SnapshotFor(configKey string) (Config, bool) {
+func (s *Store) SnapshotFor(snapshot *internalconfig.Snapshot, configKey string) (Config, bool) {
 	if s == nil {
 		return Config{}, false
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cfg, found := s.configs[utils.NormalizeServiceName(configKey)]
+	cfg, found := s.authInfoFor(snapshot, configKey)
 	if !found {
 		return Config{}, false
 	}
 
-	snapshot := Config{
+	return configFromAuthInfo(cfg), true
+}
+
+func (s *Store) authInfoFor(snapshot *internalconfig.Snapshot, configKey string) (authInfo, bool) {
+	if snapshot == nil {
+		snapshot = s.Settings()
+	}
+	if snapshot == nil {
+		return authInfo{}, false
+	}
+
+	serviceName := utils.NormalizeServiceName(configKey)
+	if serviceName == "" {
+		return authInfo{}, false
+	}
+
+	service, found := snapshot.Services[serviceName]
+	if !found || service.Global == nil {
+		return authInfo{}, false
+	}
+
+	cfg, err := buildAuthInfo(service.Global.Auth)
+	if err != nil {
+		return authInfo{}, false
+	}
+
+	return cfg, true
+}
+
+func configFromAuthInfo(cfg authInfo) Config {
+	return Config{
 		JWTAlgorithm: cfg.algorithm,
 		JWTAudience:  cfg.audience,
 		JWTClockSkew: cfg.clockSkew,
@@ -80,17 +142,15 @@ func (s *Store) SnapshotFor(configKey string) (Config, bool) {
 		JWTSecret:    append([]byte(nil), cfg.secret...),
 		JWKS:         append([]byte(nil), cfg.jwks...),
 	}
-
-	return snapshot, true
 }
 
 // PublicKey 주어진 kid에 해당하는 RSA 공개키를 반환합니다.
 func (s *Store) PublicKey(kid string) (*rsa.PublicKey, error) {
-	return s.PublicKeyFor("", kid)
+	return s.PublicKeyFor(s.Settings(), "", kid)
 }
 
 // PublicKeyFor 지정한 설정 키의 kid에 해당하는 RSA 공개키를 반환합니다.
-func (s *Store) PublicKeyFor(configKey, kid string) (*rsa.PublicKey, error) {
+func (s *Store) PublicKeyFor(snapshot *internalconfig.Snapshot, configKey, kid string) (*rsa.PublicKey, error) {
 	trimmedKeyID := strings.TrimSpace(kid)
 	if trimmedKeyID == "" {
 		return nil, fmt.Errorf("%w: kid is required", ErrInvalidKeyID)
@@ -99,10 +159,7 @@ func (s *Store) PublicKeyFor(configKey, kid string) (*rsa.PublicKey, error) {
 		return nil, fmt.Errorf("%w: no registered keys", ErrKeySetUnavailable)
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	cfg, found := s.configs[utils.NormalizeServiceName(configKey)]
+	cfg, found := s.authInfoFor(snapshot, configKey)
 	if !found || len(cfg.keys) == 0 {
 		return nil, fmt.Errorf("%w: no registered keys", ErrKeySetUnavailable)
 	}

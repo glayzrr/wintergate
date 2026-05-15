@@ -2,222 +2,110 @@ package config
 
 import (
 	"fmt"
-	"strings"
 	"sync"
-
-	"wintergate/internal/utils"
+	"sync/atomic"
 )
 
-// Applier 설정 변경을 자신의 런타임 상태에 반영합니다.
-type Applier interface {
-	Apply(settings Settings) error
+// Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다.
+type Validator interface {
+	Validate(candidate Snapshot) error
 }
 
-// Manager 설정 정보를 등록된 Applier들에게 전달합니다.
+// SettingsProvider 현재 활성 설정 스냅샷을 제공합니다.
+type SettingsProvider interface {
+	Settings() *Snapshot
+}
+
+// Manager 중앙 설정 snapshot을 생성, 검증, commit합니다.
 type Manager struct {
-	appliers []Applier
-	configs  map[string]ServiceSettings
-	mu       sync.RWMutex
+	validators []Validator
+	settings   atomic.Pointer[Snapshot]
+	mu         sync.Mutex
 }
 
 // NewManager 빈 설정 Manager를 생성합니다.
 func NewManager() *Manager {
-	return &Manager{
-		appliers: make([]Applier, 0),
-		configs:  make(map[string]ServiceSettings),
-	}
+	manager := &Manager{}
+	manager.settings.Store(&Snapshot{
+		Services: make(map[string]ServiceSettings),
+		Routes:   make(map[RouteKey]RouteEntry),
+	})
+
+	return manager
 }
 
-// AddApplier 설정 변경을 수신할 Applier를 추가합니다.
-func (m *Manager) AddApplier(applier Applier) {
-	m.appliers = append(m.appliers, applier)
-}
-
-// Register 설정 정보를 검증한 뒤 등록된 Applier들에게 전달합니다.
-func (m *Manager) Register(settings Settings) error {
-	serviceName := utils.NormalizeServiceName(settings.ServiceName)
-	if settings.Global == nil {
-		return fmt.Errorf("%w: global settings is required", ErrInvalidSettings)
-	}
-
-	if serviceName == "" {
-		return fmt.Errorf("%w: service-name is required", ErrInvalidSettings)
-	}
-	if len(settings.Endpoints) == 0 {
-		return fmt.Errorf("%w: endpoints are required", ErrInvalidSettings)
-	}
-	if settings.Instance == nil {
-		return fmt.Errorf("%w: instance is required", ErrInvalidSettings)
-	}
-	normalizedScheme := strings.ToLower(strings.TrimSpace(settings.Instance.Scheme))
-	if normalizedScheme != "http" && normalizedScheme != "https" {
-		return fmt.Errorf("%w: instance scheme is required", ErrInvalidSettings)
-	}
-
-	normalizedHost, normalizedPort, err := utils.NormalizeHostPort(settings.Instance.Host, settings.Instance.Port)
-	if err != nil {
-		return fmt.Errorf("%w: config address: %w", ErrInvalidSettings, err)
-	}
-	settings.Instance = &InstanceSettings{
-		Scheme: normalizedScheme,
-		Host:   normalizedHost,
-		Port:   normalizedPort,
-	}
-
-	for _, applier := range m.appliers {
-		if applier == nil {
-			return fmt.Errorf("%w: applier is required", ErrInvalidSettings)
-		}
-
-		if err := applier.Apply(settings); err != nil {
-			return fmt.Errorf("apply config to component %T: %w", applier, err)
-		}
-	}
-
-	return m.addSettings(serviceName, settings)
-}
-
-// ConfigFor 지정한 서비스 이름으로 등록된 설정 정보의 사본을 반환합니다.
-func (m *Manager) ConfigFor(serviceName string) (ServiceSettings, bool) {
-	if m == nil {
-		return ServiceSettings{}, false
-	}
-
-	normalizedServiceName := utils.NormalizeServiceName(serviceName)
-	if normalizedServiceName == "" {
-		return ServiceSettings{}, false
-	}
-
-	m.mu.RLock()
-	settings, found := m.configs[normalizedServiceName]
-	m.mu.RUnlock()
-	if !found {
-		return ServiceSettings{}, false
-	}
-
-	return cloneServiceSettings(settings), true
-}
-
-func (m *Manager) addSettings(serviceName string, settings Settings) error {
-	normalizedServiceName := utils.NormalizeServiceName(serviceName)
-	if normalizedServiceName == "" {
-		return fmt.Errorf("%w: service-name is required", ErrInvalidSettings)
-	}
-	if settings.Instance == nil {
-		return fmt.Errorf("%w: instance is required", ErrInvalidSettings)
-	}
-
+// AddValidator 설정 후보 스냅샷을 검증할 Validator를 추가합니다.
+func (m *Manager) AddValidator(validator Validator) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	serviceSettings, found := m.configs[normalizedServiceName]
-	if !found {
-		m.configs[normalizedServiceName] = convertSettings(normalizedServiceName, settings)
-		return nil
+	m.validators = append(m.validators, validator)
+}
+
+// Register 설정 정보를 후보 snapshot으로 만든 뒤 검증을 통과한 경우에만 commit합니다.
+func (m *Manager) Register(settings Settings) error {
+	// 요청 payload를 서비스 키와 런타임 저장소에서 공통으로 사용할 정규화된 값으로 맞춥니다.
+	serviceName, normalizedSettings, err := normalizeSettings(settings)
+	if err != nil {
+		return err
 	}
 
-	serviceSettings.Global = cloneGlobalSettings(settings.Global)
-	serviceSettings.Threshold = cloneThresholdSettings(settings.Threshold)
-	serviceSettings.Endpoints = cloneEndpointSettings(settings.Endpoints)
-	serviceSettings.Instances = upsertInstanceSettings(serviceSettings.Instances, *cloneInstanceSettings(settings.Instance))
-	m.configs[normalizedServiceName] = serviceSettings
+	// 설정 등록은 current snapshot 기준 candidate 생성부터 commit까지 직렬화합니다.
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 활성 snapshot은 직접 수정하지 않고, 변경 요청을 반영한 후보 snapshot을 새로 만듭니다.
+	candidate, err := buildCandidate(m.settings.Load(), serviceName, normalizedSettings)
+	if err != nil {
+		return err
+	}
+
+	// 전체 후보 snapshot을 모든 validator가 승인해야 런타임 상태에 반영할 수 있습니다.
+	for _, validator := range m.validators {
+		if validator == nil {
+			return fmt.Errorf("%w: validator is required", ErrInvalidSettings)
+		}
+
+		if err := validator.Validate(*candidate); err != nil {
+			return fmt.Errorf("validate config with component %T: %w", validator, err)
+		}
+	}
+
+	// 모든 검증이 끝난 후보만 활성 snapshot으로 공개합니다.
+	m.commit(candidate)
 
 	return nil
 }
 
-func upsertInstanceSettings(instances []InstanceSettings, next InstanceSettings) []InstanceSettings {
-	for index, instance := range instances {
-		if instance.Host == next.Host && instance.Port == next.Port {
-			instances[index] = next
-			return instances
-		}
-	}
-
-	return append(instances, next)
+func (m *Manager) commit(candidate *Snapshot) {
+	m.settings.Store(candidate)
 }
 
-func convertSettings(serviceName string, settings Settings) ServiceSettings {
-	return ServiceSettings{
-		ServiceName: serviceName,
-		Global:      cloneGlobalSettings(settings.Global),
-		Threshold:   cloneThresholdSettings(settings.Threshold),
-		Endpoints:   cloneEndpointSettings(settings.Endpoints),
-		Instances:   []InstanceSettings{*cloneInstanceSettings(settings.Instance)},
-	}
-}
-
-func cloneServiceSettings(settings ServiceSettings) ServiceSettings {
-	return ServiceSettings{
-		ServiceName: settings.ServiceName,
-		Global:      cloneGlobalSettings(settings.Global),
-		Threshold:   cloneThresholdSettings(settings.Threshold),
-		Endpoints:   cloneEndpointSettings(settings.Endpoints),
-		Instances:   append([]InstanceSettings(nil), settings.Instances...),
-	}
-}
-
-func cloneGlobalSettings(settings *GlobalSettings) *GlobalSettings {
-	if settings == nil {
+// Settings 현재 활성 설정 스냅샷을 반환합니다. 반환된 스냅샷은 수정하지 않아야 합니다.
+func (m *Manager) Settings() *Snapshot {
+	if m == nil {
 		return nil
 	}
 
-	return &GlobalSettings{
-		Auth: cloneAuthSettings(settings.Auth),
-	}
+	return m.settings.Load()
 }
 
-func cloneAuthSettings(settings *AuthSettings) *AuthSettings {
-	if settings == nil {
-		return nil
+// ConfigFor 지정한 서비스 이름으로 등록된 설정 정보의 사본을 반환합니다.
+func (m *Manager) ConfigFor(serviceName string) (ServiceSettings, bool) {
+	snapshot := m.Settings()
+	if snapshot == nil {
+		return ServiceSettings{}, false
 	}
 
-	return &AuthSettings{
-		JWTAlgorithm: settings.JWTAlgorithm,
-		JWTAudience:  settings.JWTAudience,
-		JWTClockSkew: settings.JWTClockSkew,
-		JWTIssuer:    settings.JWTIssuer,
-		JWTSecret:    settings.JWTSecret,
-		JWKS:         append([]byte(nil), settings.JWKS...),
-	}
-}
-
-func cloneInstanceSettings(settings *InstanceSettings) *InstanceSettings {
-	if settings == nil {
-		return nil
+	normalizedServiceName := normalizeServiceName(serviceName)
+	if normalizedServiceName == "" {
+		return ServiceSettings{}, false
 	}
 
-	return &InstanceSettings{
-		Scheme: settings.Scheme,
-		Host:   settings.Host,
-		Port:   settings.Port,
-	}
-}
-
-func cloneThresholdSettings(settings *ThresholdSettings) *ThresholdSettings {
-	if settings == nil {
-		return nil
+	settings, found := snapshot.Services[normalizedServiceName]
+	if !found {
+		return ServiceSettings{}, false
 	}
 
-	return &ThresholdSettings{
-		Normal: settings.Normal,
-		Hot:    settings.Hot,
-		Super:  settings.Super,
-	}
-}
-
-func cloneEndpointSettings(endpoints []EndpointSettings) []EndpointSettings {
-	if len(endpoints) == 0 {
-		return nil
-	}
-
-	clonedEndpoints := make([]EndpointSettings, 0, len(endpoints))
-	for _, endpoint := range endpoints {
-		clonedEndpoints = append(clonedEndpoints, EndpointSettings{
-			Path:   endpoint.Path,
-			Method: endpoint.Method,
-			Roles:  append([]string(nil), endpoint.Roles...),
-		})
-	}
-
-	return clonedEndpoints
+	return settings.Clone(), true
 }

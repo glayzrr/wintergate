@@ -7,11 +7,12 @@ import (
 	"strings"
 
 	internalauth "wintergate/internal/auth"
+	internalconfig "wintergate/internal/config"
 )
 
 // TokenDecoder Bearer 토큰을 검증하고 claims를 반환하는 계약입니다.
 type TokenDecoder interface {
-	DecodeFor(serviceName, token string) (internalauth.Claims, error)
+	DecodeFor(snapshot *internalconfig.Snapshot, serviceName, token string) (internalauth.Claims, error)
 }
 
 // AuthenticateTask 게이트웨이 요청의 Bearer JWT를 검증합니다.
@@ -47,7 +48,7 @@ func (t *AuthenticateTask) Run(_ context.Context, state *State) error {
 	}
 
 	// 토큰 서명과 claims를 검증하고 이후 task에서 사용할 수 있도록 저장합니다.
-	claims, err := t.decoder.DecodeFor(state.Request.ServiceName, token)
+	claims, err := t.decoder.DecodeFor(state.Settings, state.Request.ServiceName, token)
 	if err != nil {
 		slog.Info(
 			logJWTTokenDecodeFailed,

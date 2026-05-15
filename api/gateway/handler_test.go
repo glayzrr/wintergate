@@ -215,7 +215,7 @@ func TestHandlerReceiveReturnsInternalServerErrorWhenTaskFails(t *testing.T) {
 func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	store := mustAuthStore(t, authconfig.Config{
+	store, snapshot := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -224,7 +224,7 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 	})
 
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(store))
-	handler := NewHandler(internalgateway.NewOrchestrator(protectedRouteTask(), authenticateTask))
+	handler := NewHandler(internalgateway.NewOrchestrator(protectedRouteTask(snapshot), authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -251,7 +251,7 @@ func TestHandlerReceiveReturnsUnauthorizedWhenAuthorizationHeaderInvalid(t *test
 func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	store := mustAuthStore(t, authconfig.Config{
+	store, snapshot := mustAuthStore(t, authconfig.Config{
 		JWTAlgorithm: "HS256",
 		JWTAudience:  "wintergate",
 		JWTClockSkew: time.Minute,
@@ -260,7 +260,7 @@ func TestHandlerReceiveAcceptsValidBearerTokenWhenAuthTaskRegistered(t *testing.
 	})
 
 	authenticateTask := internalgateway.NewAuthenticateTask(internalauth.NewDecoder(store))
-	handler := NewHandler(internalgateway.NewOrchestrator(protectedRouteTask(), authenticateTask))
+	handler := NewHandler(internalgateway.NewOrchestrator(protectedRouteTask(snapshot), authenticateTask))
 
 	router := gin.New()
 	handler.RegisterRoutes(router)
@@ -335,8 +335,9 @@ func (fn internalgatewayTaskFunc) Run(ctx context.Context, state *internalgatewa
 	return fn(ctx, state)
 }
 
-func protectedRouteTask() internalgateway.Task {
+func protectedRouteTask(snapshot *internalconfig.Snapshot) internalgateway.Task {
 	return internalgatewayTaskFunc(func(_ context.Context, state *internalgateway.State) error {
+		state.Settings = snapshot
 		state.Request.ServiceName = "order-service"
 		state.Route = &routeconfig.RouteInfo{
 			ServiceName: "order-service",
@@ -346,10 +347,12 @@ func protectedRouteTask() internalgateway.Task {
 	})
 }
 
-func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
+func mustAuthStore(t *testing.T, cfg authconfig.Config) (*authconfig.Store, *internalconfig.Snapshot) {
 	t.Helper()
 
+	manager := internalconfig.NewManager()
 	store := authconfig.NewStore()
+	manager.AddValidator(store)
 	settings := internalconfig.Settings{
 		ServiceName: "order-service",
 		Global: &internalconfig.GlobalSettings{
@@ -362,13 +365,21 @@ func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
 				JWKS:         append([]byte(nil), cfg.JWKS...),
 			},
 		},
+		Instance: &internalconfig.InstanceSettings{
+			Scheme: "http",
+			Host:   "localhost",
+			Port:   "8080",
+		},
+		Endpoints: []internalconfig.EndpointSettings{
+			{Path: "/orders", Method: "GET", Roles: []string{"USER"}},
+		},
 	}
 
-	if err := store.Apply(settings); err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+	if err := manager.Register(settings); err != nil {
+		t.Fatalf("Register returned error: %v", err)
 	}
 
-	return store
+	return store, manager.Settings()
 }
 
 func mustHS256Token(t *testing.T, secret []byte) string {

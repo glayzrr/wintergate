@@ -43,7 +43,7 @@ func TestRegisteredPoolRuntimeForwardsRequestsAndChangesAssignment(t *testing.T)
 	if err != nil {
 		t.Fatalf("StatusFor returned error for first request: %v", err)
 	}
-	firstAssignment := runtime.PoolStore.AssignmentFor(firstStatus)
+	firstAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), firstStatus)
 	if firstStatus.InFlight != 1 {
 		t.Fatalf("first status InFlight = %d, want 1", firstStatus.InFlight)
 	}
@@ -58,7 +58,7 @@ func TestRegisteredPoolRuntimeForwardsRequestsAndChangesAssignment(t *testing.T)
 	if err != nil {
 		t.Fatalf("StatusFor returned error for second request: %v", err)
 	}
-	secondAssignment := runtime.PoolStore.AssignmentFor(secondStatus)
+	secondAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), secondStatus)
 	if secondStatus.InFlight != 2 {
 		t.Fatalf("second status InFlight = %d, want 2", secondStatus.InFlight)
 	}
@@ -97,7 +97,7 @@ func TestRegisteredPoolRuntimeForwardsRequestsAndChangesAssignment(t *testing.T)
 	if err != nil {
 		t.Fatalf("StatusFor returned error after completion: %v", err)
 	}
-	afterDoneAssignment := runtime.PoolStore.AssignmentFor(afterDoneStatus)
+	afterDoneAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), afterDoneStatus)
 	if afterDoneStatus.InFlight != 0 {
 		t.Fatalf("after done InFlight = %d, want 0", afterDoneStatus.InFlight)
 	}

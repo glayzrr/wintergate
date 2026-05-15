@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	internalauth "wintergate/internal/auth"
+	internalconfig "wintergate/internal/config"
 	routeconfig "wintergate/internal/route/config"
 )
 
@@ -20,7 +21,8 @@ type Request struct {
 
 // State 오케스트레이터가 각 작업 사이에서 공유하는 요청 처리 상태입니다.
 type State struct {
-	Request Request
-	Route   *routeconfig.RouteInfo
-	Claims  *internalauth.Claims
+	Settings *internalconfig.Snapshot
+	Request  Request
+	Route    *routeconfig.RouteInfo
+	Claims   *internalauth.Claims
 }

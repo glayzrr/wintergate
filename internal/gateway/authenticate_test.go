@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	internalauth "wintergate/internal/auth"
+	internalconfig "wintergate/internal/config"
 	routeconfig "wintergate/internal/route/config"
 )
 
@@ -127,7 +128,7 @@ type stubTokenDecoder struct {
 	err    error
 }
 
-func (d stubTokenDecoder) DecodeFor(_, _ string) (internalauth.Claims, error) {
+func (d stubTokenDecoder) DecodeFor(_ *internalconfig.Snapshot, _, _ string) (internalauth.Claims, error) {
 	if d.err != nil {
 		return internalauth.Claims{}, d.err
 	}

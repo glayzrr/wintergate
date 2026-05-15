@@ -1,0 +1,57 @@
+package config
+
+import (
+	"fmt"
+	"sync"
+	"sync/atomic"
+
+	internalconfig "wintergate/internal/config"
+	"wintergate/internal/utils"
+)
+
+// LoadBalancer LoadBalancer는 서비스별 인스턴스 선택 cursor만 관리합니다.
+type LoadBalancer struct {
+	cursors sync.Map
+}
+
+// NewLoadBalancer 인스턴스 선택용 load balancer를 생성합니다.
+func NewLoadBalancer() *LoadBalancer {
+	return &LoadBalancer{}
+}
+
+// NextInstance 지정한 서비스의 다음 인스턴스를 라운드로빈 순서로 반환합니다.
+func (lb *LoadBalancer) NextInstance(snapshot *internalconfig.Snapshot, serviceName string) (internalconfig.InstanceSettings, error) {
+	// LoadBalancer는 설정을 보관하지 않으므로 호출자가 고정한 snapshot이 반드시 필요합니다.
+	if lb == nil {
+		return internalconfig.InstanceSettings{}, fmt.Errorf("%w: load balancer is nil", ErrInvalidConfig)
+	}
+	if snapshot == nil {
+		return internalconfig.InstanceSettings{}, fmt.Errorf("%w: settings snapshot is required", ErrConfigNotFound)
+	}
+
+	normalizedServiceName := utils.NormalizeServiceName(serviceName)
+	if normalizedServiceName == "" {
+		return internalconfig.InstanceSettings{}, fmt.Errorf("%w: service-name is required", ErrInvalidConfig)
+	}
+
+	// 인스턴스 목록은 중앙 snapshot에서만 읽고, 여기서는 선택 위치만 관리합니다.
+	service, found := snapshot.Services[normalizedServiceName]
+	if !found {
+		return internalconfig.InstanceSettings{}, fmt.Errorf("%w: %s", ErrConfigNotFound, normalizedServiceName)
+	}
+	if len(service.Instances) == 0 {
+		return internalconfig.InstanceSettings{}, fmt.Errorf("%w: service %q has no instances", ErrInvalidConfig, normalizedServiceName)
+	}
+
+	// cursor는 요청 경로의 mutable runtime state라 snapshot에 넣지 않고 서비스별로 독립 관리합니다.
+	value, _ := lb.cursors.LoadOrStore(normalizedServiceName, &atomic.Uint64{})
+	cursor, ok := value.(*atomic.Uint64)
+	if !ok || cursor == nil {
+		return internalconfig.InstanceSettings{}, fmt.Errorf("%w: service cursor is invalid", ErrInvalidConfig)
+	}
+
+	index := cursor.Add(1) - 1
+
+	// snapshot의 인스턴스 slice는 불변으로 다루므로 선택된 값을 그대로 반환합니다.
+	return service.Instances[index%uint64(len(service.Instances))], nil
+}

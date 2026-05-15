@@ -55,7 +55,7 @@ func TestPoolRuntimeHandlesConcurrentRequestsAndStatusReads(t *testing.T) {
 			default:
 				status, err := trafficRecorder.StatusFor("order-service")
 				if err == nil {
-					_ = runtime.PoolStore.AssignmentFor(status)
+					_ = runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), status)
 				}
 			}
 		}

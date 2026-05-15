@@ -87,7 +87,7 @@ func TestBearerTokenReturnsErrorWhenTokenMissing(t *testing.T) {
 func TestDecodeReturnsErrorWhenConfigUnavailable(t *testing.T) {
 	decoder := NewDecoder(authconfig.NewStore())
 
-	_, err := decoder.DecodeFor("order-service", mustHS256Token(t, []byte("shared-secret"), map[string]any{
+	_, err := decoder.DecodeFor(nil, "order-service", mustHS256Token(t, []byte("shared-secret"), map[string]any{
 		"aud": "wintergate",
 		"exp": time.Now().Add(time.Minute).Unix(),
 		"iss": "auth-service",
@@ -132,7 +132,7 @@ func TestDecodeReturnsClaimsForHS256Token(t *testing.T) {
 		"sub": "user-1",
 	})
 
-	claims, err := decoder.DecodeFor("order-service", token)
+	claims, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestDecodeReturnsCustomClaimsFromGeneratedHS256Token(t *testing.T) {
 		"sub":   "user-1",
 	})
 
-	claims, err := decoder.DecodeFor("order-service", token)
+	claims, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestDecodeReturnsClaimsForRS256Token(t *testing.T) {
 		"sub": "service-a",
 	})
 
-	claims, err := decoder.DecodeFor("order-service", token)
+	claims, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err != nil {
 		t.Fatalf("Decode returned error: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestDecodeReturnsErrorWhenSignatureInvalid(t *testing.T) {
 		"iss": "auth-service",
 	})
 
-	_, err := decoder.DecodeFor("order-service", token)
+	_, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -302,7 +302,7 @@ func TestDecodeReturnsErrorWhenTokenExpired(t *testing.T) {
 		"iss": "auth-service",
 	})
 
-	_, err := decoder.DecodeFor("order-service", token)
+	_, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -333,7 +333,7 @@ func TestDecodeReturnsErrorWhenIssuerInvalid(t *testing.T) {
 		"iss": "other-service",
 	})
 
-	_, err := decoder.DecodeFor("order-service", token)
+	_, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -364,7 +364,7 @@ func TestDecodeReturnsErrorWhenAudienceInvalid(t *testing.T) {
 		"iss": "auth-service",
 	})
 
-	_, err := decoder.DecodeFor("order-service", token)
+	_, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -396,7 +396,7 @@ func TestDecodeReturnsErrorWhenTokenNotYetValid(t *testing.T) {
 		"nbf": currentTime.Add(time.Minute).Unix(),
 	})
 
-	_, err := decoder.DecodeFor("order-service", token)
+	_, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}
@@ -437,7 +437,7 @@ func TestDecodeReturnsErrorWhenAlgorithmMismatch(t *testing.T) {
 		return mac.Sum(nil)
 	})
 
-	_, err := decoder.DecodeFor("order-service", token)
+	_, err := decoder.DecodeFor(registry.snapshot, "order-service", token)
 	if err == nil {
 		t.Fatal("Decode returned nil error")
 	}

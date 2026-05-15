@@ -25,7 +25,7 @@ func newPoolOrchestrator(runtime *harness.Runtime, trafficRecorder *internalpool
 	forwarder := internalpool.NewForwarder(coordinator, metricRecorder)
 
 	return internalgateway.NewOrchestrator(
-		internalgateway.NewRouteTask(runtime.RouteStore),
+		internalgateway.NewRouteTask(runtime.Manager, runtime.Router, runtime.LoadBalancer),
 		internalgateway.NewTransferTask(runtime.PoolStore, forwarder, trafficRecorder),
 	)
 }

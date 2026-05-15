@@ -39,7 +39,7 @@ func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing
 	if err != nil {
 		t.Fatalf("StatusFor returned error for first request: %v", err)
 	}
-	firstAssignment := runtime.PoolStore.AssignmentFor(firstStatus)
+	firstAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), firstStatus)
 	if firstAssignment.Dedicated {
 		t.Fatal("first assignment is dedicated, want shared below threshold")
 	}
@@ -55,7 +55,7 @@ func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing
 	if err != nil {
 		t.Fatalf("StatusFor returned error for second request: %v", err)
 	}
-	secondAssignment := runtime.PoolStore.AssignmentFor(secondStatus)
+	secondAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), secondStatus)
 	if !secondAssignment.Dedicated {
 		t.Fatal("second assignment is shared, want dedicated at threshold")
 	}
@@ -78,7 +78,7 @@ func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing
 	if err != nil {
 		t.Fatalf("StatusFor returned error after completion: %v", err)
 	}
-	afterDoneAssignment := runtime.PoolStore.AssignmentFor(afterDoneStatus)
+	afterDoneAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), afterDoneStatus)
 	if afterDoneAssignment.Dedicated {
 		t.Fatal("assignment is dedicated after in-flight dropped below threshold, want shared")
 	}

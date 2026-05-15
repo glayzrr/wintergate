@@ -16,6 +16,7 @@ import (
 	"time"
 
 	authconfig "wintergate/internal/auth/config"
+	internalconfig "wintergate/internal/config"
 )
 
 const (
@@ -31,8 +32,8 @@ type Decoder struct {
 
 // ConfigProvider 서비스 이름별 인증 설정과 공개키를 조회합니다.
 type ConfigProvider interface {
-	SnapshotFor(serviceName string) (authconfig.Config, bool)
-	PublicKeyFor(serviceName, kid string) (*rsa.PublicKey, error)
+	SnapshotFor(snapshot *internalconfig.Snapshot, serviceName string) (authconfig.Config, bool)
+	PublicKeyFor(snapshot *internalconfig.Snapshot, serviceName, kid string) (*rsa.PublicKey, error)
 }
 
 // NewDecoder JWT 검증용 Decoder를 생성합니다.
@@ -69,7 +70,7 @@ func BearerTokenFor(authorizationHeader string) (string, error) {
 }
 
 // DecodeFor 지정한 서비스 이름의 인증 설정으로 JWT를 검증하고 claims를 반환합니다.
-func (d *Decoder) DecodeFor(serviceName, token string) (Claims, error) {
+func (d *Decoder) DecodeFor(snapshot *internalconfig.Snapshot, serviceName, token string) (Claims, error) {
 	trimmedToken := strings.TrimSpace(token)
 	if trimmedToken == "" {
 		return Claims{}, fmt.Errorf("%w: token is required", ErrInvalidToken)
@@ -79,7 +80,7 @@ func (d *Decoder) DecodeFor(serviceName, token string) (Claims, error) {
 		return Claims{}, fmt.Errorf("%w: auth config provider is required", ErrConfigUnavailable)
 	}
 
-	cfg, found := d.provider.SnapshotFor(serviceName)
+	cfg, found := d.provider.SnapshotFor(snapshot, serviceName)
 	if !found {
 		return Claims{}, fmt.Errorf("%w: auth config is not registered", ErrConfigUnavailable)
 	}
@@ -94,7 +95,7 @@ func (d *Decoder) DecodeFor(serviceName, token string) (Claims, error) {
 		return Claims{}, err
 	}
 
-	if err := d.verifySignature(context.Background(), serviceName, cfg, header, headerPayload.signingInput, signature); err != nil {
+	if err := d.verifySignature(context.Background(), snapshot, serviceName, cfg, header, headerPayload.signingInput, signature); err != nil {
 		return Claims{}, err
 	}
 
@@ -183,7 +184,7 @@ func decodeClaims(payload []byte) (decodedClaims, error) {
 	}, nil
 }
 
-func (d *Decoder) verifySignature(_ context.Context, serviceName string, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
+func (d *Decoder) verifySignature(_ context.Context, snapshot *internalconfig.Snapshot, serviceName string, cfg authconfig.Config, header tokenHeader, signingInput string, signature []byte) error {
 	if header.Algorithm != cfg.JWTAlgorithm {
 		return fmt.Errorf("%w: expected %q, got %q", ErrUnsupportedAlgorithm, cfg.JWTAlgorithm, header.Algorithm)
 	}
@@ -206,7 +207,7 @@ func (d *Decoder) verifySignature(_ context.Context, serviceName string, cfg aut
 			return fmt.Errorf("%w: kid is required", ErrInvalidToken)
 		}
 
-		publicKey, err := d.provider.PublicKeyFor(serviceName, trimmedKeyID)
+		publicKey, err := d.provider.PublicKeyFor(snapshot, serviceName, trimmedKeyID)
 		if err != nil {
 			return fmt.Errorf("load public key: %w", err)
 		}

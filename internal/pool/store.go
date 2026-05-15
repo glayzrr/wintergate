@@ -2,7 +2,6 @@ package pool
 
 import (
 	"fmt"
-	"sync"
 
 	"wintergate/internal/config"
 	"wintergate/internal/utils"
@@ -30,22 +29,59 @@ type Assignment struct {
 	Status      Status
 }
 
-// Store 서비스 이름별 트래픽 분류 정책을 저장합니다.
-type Store struct {
-	policies map[string]poolInfo
-
-	// mu는 policies map의 동시 조회와 정책 교체를 보호합니다.
-	mu sync.RWMutex
-}
+// Store snapshot의 threshold 설정으로 pool assignment를 계산합니다.
+type Store struct{}
 
 // NewStore 빈 트래픽 정책 저장소를 생성합니다.
 func NewStore() *Store {
-	return &Store{
-		policies: make(map[string]poolInfo),
-	}
+	return &Store{}
 }
 
-// Apply 전달받은 서비스 설정의 threshold를 서비스 이름별 정책으로 반영합니다.
+// Validate 후보 스냅샷의 전체 풀 정책이 반영 가능한지 검증합니다.
+func (s *Store) Validate(candidate config.Snapshot) error {
+	if s == nil {
+		return fmt.Errorf("%w: store is nil", ErrInvalidPolicy)
+	}
+
+	for _, service := range candidate.Services {
+		if service.Threshold == nil {
+			continue
+		}
+
+		policy := poolInfo{
+			ConfigKey: utils.NormalizeServiceName(service.ServiceName),
+			Normal: Threshold{
+				RPS:      service.Threshold.Normal.RPS,
+				InFlight: service.Threshold.Normal.InFlight,
+			},
+			Hot: Threshold{
+				RPS:      service.Threshold.Hot.RPS,
+				InFlight: service.Threshold.Hot.InFlight,
+			},
+			Super: Threshold{
+				RPS:      service.Threshold.Super.RPS,
+				InFlight: service.Threshold.Super.InFlight,
+			},
+		}
+
+		if policy.ConfigKey == "" {
+			return fmt.Errorf("%w: service-name is required", ErrInvalidPolicy)
+		}
+		if err := validateThreshold(policy.Normal, "normal"); err != nil {
+			return err
+		}
+		if err := validateThreshold(policy.Hot, "hot"); err != nil {
+			return err
+		}
+		if err := validateThreshold(policy.Super, "super"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Apply 중앙 snapshot 전환 이후 threshold를 내부 저장소에 복제하지 않습니다.
 func (s *Store) Apply(settings config.Settings) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidPolicy)
@@ -57,7 +93,6 @@ func (s *Store) Apply(settings config.Settings) error {
 	}
 
 	if settings.Threshold == nil {
-		s.Delete(normalizedServiceName)
 		return nil
 	}
 
@@ -87,34 +122,16 @@ func (s *Store) Apply(settings config.Settings) error {
 		return err
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.policies[normalizedServiceName] = policy
-
 	return nil
 }
 
 // Delete 지정한 서비스 이름의 정책을 제거합니다.
 func (s *Store) Delete(serviceName string) {
-	if s == nil {
-		return
-	}
-
-	normalizedServiceName := utils.NormalizeServiceName(serviceName)
-	if normalizedServiceName == "" {
-		return
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.policies, normalizedServiceName)
 }
 
 // PolicyFor 서비스 이름별 등록 정책의 사본을 반환합니다.
-func (s *Store) PolicyFor(serviceName string) (poolInfo, bool) {
-	if s == nil {
+func (s *Store) PolicyFor(snapshot *config.Snapshot, serviceName string) (poolInfo, bool) {
+	if s == nil || snapshot == nil {
 		return poolInfo{}, false
 	}
 
@@ -123,16 +140,30 @@ func (s *Store) PolicyFor(serviceName string) (poolInfo, bool) {
 		return poolInfo{}, false
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	service, found := snapshot.Services[normalizedServiceName]
+	if !found || service.Threshold == nil {
+		return poolInfo{}, false
+	}
 
-	policy, found := s.policies[normalizedServiceName]
-
-	return policy, found
+	return poolInfo{
+		ConfigKey: normalizedServiceName,
+		Normal: Threshold{
+			RPS:      service.Threshold.Normal.RPS,
+			InFlight: service.Threshold.Normal.InFlight,
+		},
+		Hot: Threshold{
+			RPS:      service.Threshold.Hot.RPS,
+			InFlight: service.Threshold.Hot.InFlight,
+		},
+		Super: Threshold{
+			RPS:      service.Threshold.Super.RPS,
+			InFlight: service.Threshold.Super.InFlight,
+		},
+	}, true
 }
 
 // AssignmentFor 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
-func (s *Store) AssignmentFor(status Status) Assignment {
+func (s *Store) AssignmentFor(snapshot *config.Snapshot, status Status) Assignment {
 	normalizedServiceName := utils.NormalizeServiceName(status.ConfigKey)
 
 	decision := Assignment{
@@ -145,7 +176,7 @@ func (s *Store) AssignmentFor(status Status) Assignment {
 	}
 
 	// 등록된 정책이 없으면 기본 정책을 반환합니다.
-	policy, found := s.PolicyFor(normalizedServiceName)
+	policy, found := s.PolicyFor(snapshot, normalizedServiceName)
 	if !found {
 		return decision
 	}

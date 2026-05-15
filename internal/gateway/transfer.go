@@ -7,12 +7,13 @@ import (
 	"strconv"
 	"strings"
 
+	internalconfig "wintergate/internal/config"
 	"wintergate/internal/pool"
 )
 
 // PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다.
 type PoolProvider interface {
-	AssignmentFor(status pool.Status) pool.Assignment
+	AssignmentFor(snapshot *internalconfig.Snapshot, status pool.Status) pool.Assignment
 }
 
 // PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다.
@@ -72,7 +73,7 @@ func (t *TransferTask) Run(_ context.Context, state *State) error {
 		return fmt.Errorf("read pool status: %w", err)
 	}
 
-	assignment := t.provider.AssignmentFor(status)
+	assignment := t.provider.AssignmentFor(state.Settings, status)
 
 	// 커넥션 풀 정책을 적용해 업스트림으로 요청을 전달하고 응답을 클라이언트에 씁니다.
 	if err := t.forwarder.Handle(pool.ForwardRequest{

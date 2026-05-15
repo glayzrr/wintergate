@@ -15,6 +15,28 @@ type Settings struct {
 	Endpoints   []EndpointSettings `json:"endpoints"`
 }
 
+// Snapshot 활성 서비스 설정 전체를 표현하는 불변 스냅샷입니다.
+type Snapshot struct {
+	Revision       uint64
+	Services       map[string]ServiceSettings
+	Routes         map[RouteKey]RouteEntry
+	WildcardRoutes []RouteEntry
+}
+
+// RouteKey method와 path로 정확히 조회할 수 있는 라우팅 키입니다.
+type RouteKey struct {
+	Method string
+	Path   string
+}
+
+// RouteEntry 활성 스냅샷 안의 라우팅 조회 엔트리입니다.
+type RouteEntry struct {
+	ServiceName string
+	Path        string
+	Method      string
+	Roles       []string
+}
+
 // GlobalSettings 해당 서비스 설정 안에서 공통으로 적용하는 설정 정보입니다.
 type GlobalSettings struct {
 	Auth *AuthSettings `json:"auth"`

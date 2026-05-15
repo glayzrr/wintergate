@@ -10,31 +10,43 @@ import (
 )
 
 func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
-	task := NewRouteTask(routeProviderStub{
-		routeFor: func(method, path string) (routeconfig.RouteInfo, bool) {
-			if method != "GET" || path != "/orders" {
-				return routeconfig.RouteInfo{}, false
-			}
+	snapshot := &internalconfig.Snapshot{Revision: 7}
+	task := NewRouteTask(
+		settingsProviderStub{snapshot: snapshot},
+		routerStub{
+			routeFor: func(receivedSnapshot *internalconfig.Snapshot, method, path string) (routeconfig.RouteInfo, bool) {
+				if receivedSnapshot != snapshot {
+					t.Fatal("router received unexpected snapshot")
+				}
+				if method != "GET" || path != "/orders" {
+					return routeconfig.RouteInfo{}, false
+				}
 
-			return routeconfig.RouteInfo{
-				ServiceName: "order-service",
-				Path:        "/orders",
-				HttpMethod:  "GET",
-				Roles:       []string{"ADMIN"},
-			}, true
+				return routeconfig.RouteInfo{
+					ServiceName: "order-service",
+					Path:        "/orders",
+					HttpMethod:  "GET",
+					Roles:       []string{"ADMIN"},
+				}, true
+			},
 		},
-		nextInstance: func(serviceName string) (internalconfig.InstanceSettings, error) {
-			if serviceName != "order-service" {
-				t.Fatalf("serviceName = %q, want %q", serviceName, "order-service")
-			}
+		instanceSelectorStub{
+			nextInstance: func(receivedSnapshot *internalconfig.Snapshot, serviceName string) (internalconfig.InstanceSettings, error) {
+				if receivedSnapshot != snapshot {
+					t.Fatal("instance selector received unexpected snapshot")
+				}
+				if serviceName != "order-service" {
+					t.Fatalf("serviceName = %q, want %q", serviceName, "order-service")
+				}
 
-			return internalconfig.InstanceSettings{
-				Scheme: "http",
-				Host:   "localhost",
-				Port:   "8080",
-			}, nil
+				return internalconfig.InstanceSettings{
+					Scheme: "http",
+					Host:   "localhost",
+					Port:   "8080",
+				}, nil
+			},
 		},
-	})
+	)
 	state := &State{
 		Request: Request{
 			Method: "GET",
@@ -46,6 +58,9 @@ func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
+	if state.Settings != snapshot {
+		t.Fatal("state.Settings did not store active snapshot")
+	}
 	if state.Request.ServiceName != "order-service" {
 		t.Fatalf("state.Request.ServiceName = %q, want %q", state.Request.ServiceName, "order-service")
 	}
@@ -64,11 +79,15 @@ func TestRouteTaskRunStoresMatchedRoutePolicy(t *testing.T) {
 }
 
 func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
-	task := NewRouteTask(routeProviderStub{
-		routeFor: func(string, string) (routeconfig.RouteInfo, bool) {
-			return routeconfig.RouteInfo{}, false
+	task := NewRouteTask(
+		settingsProviderStub{snapshot: &internalconfig.Snapshot{}},
+		routerStub{
+			routeFor: func(*internalconfig.Snapshot, string, string) (routeconfig.RouteInfo, bool) {
+				return routeconfig.RouteInfo{}, false
+			},
 		},
-	})
+		instanceSelectorStub{},
+	)
 	state := &State{
 		Request: Request{
 			Method: "GET",
@@ -86,8 +105,20 @@ func TestRouteTaskRunReturnsRoutingError(t *testing.T) {
 	}
 }
 
+func TestRouteTaskRunReturnsErrorWhenSnapshotNil(t *testing.T) {
+	task := NewRouteTask(settingsProviderStub{}, routerStub{}, instanceSelectorStub{})
+
+	err := task.Run(context.Background(), &State{})
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if !errors.Is(err, routeconfig.ErrConfigNotFound) {
+		t.Fatalf("error = %v, want ErrConfigNotFound", err)
+	}
+}
+
 func TestRouteTaskRunReturnsErrorWhenProviderNil(t *testing.T) {
-	task := NewRouteTask(nil)
+	task := NewRouteTask(nil, routerStub{}, instanceSelectorStub{})
 
 	err := task.Run(context.Background(), &State{})
 	if err == nil {
@@ -98,23 +129,34 @@ func TestRouteTaskRunReturnsErrorWhenProviderNil(t *testing.T) {
 	}
 }
 
-type routeProviderStub struct {
-	routeFor     func(method, path string) (routeconfig.RouteInfo, bool)
-	nextInstance func(serviceName string) (internalconfig.InstanceSettings, error)
+type settingsProviderStub struct {
+	snapshot *internalconfig.Snapshot
 }
 
-func (s routeProviderStub) RouteFor(method, path string) (routeconfig.RouteInfo, bool) {
+func (s settingsProviderStub) Settings() *internalconfig.Snapshot {
+	return s.snapshot
+}
+
+type routerStub struct {
+	routeFor func(snapshot *internalconfig.Snapshot, method, path string) (routeconfig.RouteInfo, bool)
+}
+
+func (s routerStub) RouteFor(snapshot *internalconfig.Snapshot, method, path string) (routeconfig.RouteInfo, bool) {
 	if s.routeFor == nil {
 		return routeconfig.RouteInfo{}, false
 	}
 
-	return s.routeFor(method, path)
+	return s.routeFor(snapshot, method, path)
 }
 
-func (s routeProviderStub) NextInstance(serviceName string) (internalconfig.InstanceSettings, error) {
+type instanceSelectorStub struct {
+	nextInstance func(snapshot *internalconfig.Snapshot, serviceName string) (internalconfig.InstanceSettings, error)
+}
+
+func (s instanceSelectorStub) NextInstance(snapshot *internalconfig.Snapshot, serviceName string) (internalconfig.InstanceSettings, error) {
 	if s.nextInstance == nil {
 		return internalconfig.InstanceSettings{}, nil
 	}
 
-	return s.nextInstance(serviceName)
+	return s.nextInstance(snapshot, serviceName)
 }
