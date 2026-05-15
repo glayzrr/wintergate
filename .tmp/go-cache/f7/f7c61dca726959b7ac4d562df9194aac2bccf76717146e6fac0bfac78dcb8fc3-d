@@ -1,8 +1,0 @@
-./errors.go
-./manager.go
-./model.go
-./normalize.go
-./settings.go
-./snapshot.go
-./manager_test.go
-./model_test.go
