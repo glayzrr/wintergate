@@ -572,10 +572,17 @@ func TestNumericDateUnmarshalJSON(t *testing.T) {
 	}
 }
 
-func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
+type authRegistry struct {
+	*authconfig.Store
+	snapshot *internalconfig.Snapshot
+}
+
+func mustAuthStore(t *testing.T, cfg authconfig.Config) *authRegistry {
 	t.Helper()
 
+	manager := internalconfig.NewManager()
 	store := authconfig.NewStore()
+	manager.AddValidator(store)
 	settings := internalconfig.Settings{
 		ServiceName: "order-service",
 		Global: &internalconfig.GlobalSettings{
@@ -588,13 +595,24 @@ func mustAuthStore(t *testing.T, cfg authconfig.Config) *authconfig.Store {
 				JWKS:         append([]byte(nil), cfg.JWKS...),
 			},
 		},
+		Instance: &internalconfig.InstanceSettings{
+			Scheme: "http",
+			Host:   "localhost",
+			Port:   "8080",
+		},
+		Endpoints: []internalconfig.EndpointSettings{
+			{Path: "/orders", Method: "GET"},
+		},
 	}
 
-	if err := store.Apply(settings); err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+	if err := manager.Register(settings); err != nil {
+		t.Fatalf("Register returned error: %v", err)
 	}
 
-	return store
+	return &authRegistry{
+		Store:    store,
+		snapshot: manager.Settings(),
+	}
 }
 
 func mustHS256Token(t *testing.T, secret []byte, claims map[string]any) string {

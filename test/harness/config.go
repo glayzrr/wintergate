@@ -13,11 +13,11 @@ import (
 
 // Runtime 통합 테스트에서 설정 등록 결과를 공유하는 런타임 저장소 묶음입니다.
 type Runtime struct {
-	Manager       *internalconfig.Manager
-	AuthStore     *authconfig.Store
-	Router        *routeconfig.Router
-	LoadBalancer  *routeconfig.LoadBalancer
-	PoolStore     *pool.Store
+	Manager      *internalconfig.Manager
+	AuthStore    *authconfig.Store
+	Router       *routeconfig.Router
+	LoadBalancer *routeconfig.LoadBalancer
+	PoolStore    *pool.Store
 }
 
 // ServiceOption 테스트 서비스 설정을 조정합니다.

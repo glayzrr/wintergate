@@ -1,0 +1,8 @@
+./assignment_integration_test.go
+./concurrency_integration_test.go
+./drain_integration_test.go
+./forwarder_integration_test.go
+./record_integration_test.go
+./runtime_test.go
+./upstream_test.go
+./wait_test.go

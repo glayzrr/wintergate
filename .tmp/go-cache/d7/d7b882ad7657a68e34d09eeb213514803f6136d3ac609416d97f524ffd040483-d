@@ -1,0 +1,16 @@
+# test log
+getenv GOTMPDIR
+open /Users/moodtrbl/go-project/wintergate/.tmp/go-build/TestLoadConfigAppliesFileConfig2314214760/001/config.yml
+open /Users/moodtrbl/go-project/wintergate/.tmp/go-build/TestLoadConfigAppliesFileConfig2314214760/001/config.yml
+open /Users/moodtrbl/go-project/wintergate/.tmp/go-build
+getenv GOTMPDIR
+open /Users/moodtrbl/go-project/wintergate/.tmp/go-build/TestLoadConfigKeepsDefaultWhenFileValueMissing209579368/001/config.yml
+open /Users/moodtrbl/go-project/wintergate/.tmp/go-build/TestLoadConfigKeepsDefaultWhenFileValueMissing209579368/001/config.yml
+open /Users/moodtrbl/go-project/wintergate/.tmp/go-build
+getenv HTTP_PROXY
+getenv http_proxy
+getenv HTTPS_PROXY
+getenv https_proxy
+getenv NO_PROXY
+getenv no_proxy
+getenv REQUEST_METHOD

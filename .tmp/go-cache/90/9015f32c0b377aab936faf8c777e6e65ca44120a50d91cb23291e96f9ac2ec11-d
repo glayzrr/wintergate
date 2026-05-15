@@ -1,0 +1,6 @@
+./errors.go
+./manager.go
+./model.go
+./normalize.go
+./settings.go
+./snapshot.go

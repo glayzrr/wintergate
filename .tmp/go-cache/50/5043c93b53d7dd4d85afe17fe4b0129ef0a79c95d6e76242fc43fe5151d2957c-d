@@ -1,0 +1,4 @@
+./decoder.go
+./errors.go
+./model.go
+./decoder_test.go
