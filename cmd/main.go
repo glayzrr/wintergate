@@ -10,6 +10,7 @@ import (
 	authconfig "wintergate/internal/auth/config"
 	internalconfig "wintergate/internal/config"
 	internalgateway "wintergate/internal/gateway"
+	internalhealth "wintergate/internal/health"
 	internalmetric "wintergate/internal/metric"
 	metricrecord "wintergate/internal/metric/record"
 	"wintergate/internal/pool"
@@ -55,13 +56,16 @@ func newRouter() (*gin.Engine, error) {
 	// 설정 Manager는 각 런타임 저장소에 서비스 설정을 브로드캐스팅합니다.
 	manager := internalconfig.NewManager()
 	authStore := authconfig.NewStore()
+	healthStore := internalhealth.NewStore()
+	healthManager := internalhealth.NewManager(healthStore)
 	routeRouter := routeconfig.NewRouter()
-	routeLoadBalancer := routeconfig.NewLoadBalancer()
+	routeLoadBalancer := routeconfig.NewLoadBalancer(healthStore)
 	poolStore := pool.NewStore()
 
 	manager.AddValidator(routeconfig.NewValidator())
 	manager.AddValidator(authStore)
 	manager.AddValidator(poolStore)
+	manager.AddSnapshotListener(healthManager)
 
 	configHandler, err := configapi.NewHandler(manager)
 	if err != nil {

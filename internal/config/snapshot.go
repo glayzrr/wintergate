@@ -11,6 +11,15 @@ func buildCandidate(current *Snapshot, serviceName string, settings Settings) (*
 	return builder.snapshot(), nil
 }
 
+func buildDeregisterCandidate(current *Snapshot, serviceName string, instance InstanceSettings) (*Snapshot, error) {
+	builder := newSnapshotBuilder(current)
+	if err := builder.removeServiceInstance(serviceName, instance); err != nil {
+		return nil, err
+	}
+
+	return builder.snapshot(), nil
+}
+
 type snapshotBuilder struct {
 	candidate *Snapshot
 }
@@ -50,6 +59,7 @@ func (b *snapshotBuilder) buildService(serviceName string, settings Settings) (S
 	}
 
 	serviceSettings.Global = settings.Global.Clone()
+	serviceSettings.Health = settings.Health.Clone()
 	serviceSettings.Threshold = settings.Threshold.Clone()
 	serviceSettings.Endpoints = EndpointSettingsList(settings.Endpoints).Clone()
 	serviceSettings.Instances = upsertInstanceSettings(
@@ -58,6 +68,32 @@ func (b *snapshotBuilder) buildService(serviceName string, settings Settings) (S
 	)
 
 	return serviceSettings, routes, nil
+}
+
+func (b *snapshotBuilder) removeServiceInstance(serviceName string, instance InstanceSettings) error {
+	serviceSettings, found := b.candidate.Services[serviceName]
+	if !found {
+		return fmt.Errorf("%w: %s", ErrServiceNotFound, serviceName)
+	}
+
+	instances := make([]InstanceSettings, 0, len(serviceSettings.Instances))
+	removed := false
+	for _, registeredInstance := range serviceSettings.Instances {
+		if registeredInstance.Host == instance.Host && registeredInstance.Port == instance.Port {
+			removed = true
+			continue
+		}
+
+		instances = append(instances, registeredInstance)
+	}
+	if !removed {
+		return fmt.Errorf("%w: %s:%s", ErrInstanceNotFound, instance.Host, instance.Port)
+	}
+
+	serviceSettings.Instances = instances
+	b.candidate.Services[serviceName] = serviceSettings
+
+	return nil
 }
 
 func (b *snapshotBuilder) removeServiceRoutes(serviceName string) {
@@ -139,6 +175,7 @@ func convertSettings(serviceName string, settings Settings) ServiceSettings {
 	return ServiceSettings{
 		ServiceName: serviceName,
 		Global:      settings.Global.Clone(),
+		Health:      settings.Health.Clone(),
 		Threshold:   settings.Threshold.Clone(),
 		Endpoints:   EndpointSettingsList(settings.Endpoints).Clone(),
 		Instances:   []InstanceSettings{*settings.Instance.Clone()},

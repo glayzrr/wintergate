@@ -9,6 +9,7 @@ import (
 // Settings 외부에서 서비스별로 전달하는 Wintergate 설정 정보입니다.
 type Settings struct {
 	Global      *GlobalSettings    `json:"global"`
+	Health      *HealthSettings    `json:"health"`
 	Instance    *InstanceSettings  `json:"instance"`
 	ServiceName string             `json:"service-name"`
 	Threshold   *ThresholdSettings `json:"threshold"`
@@ -40,6 +41,18 @@ type RouteEntry struct {
 // GlobalSettings 해당 서비스 설정 안에서 공통으로 적용하는 설정 정보입니다.
 type GlobalSettings struct {
 	Auth *AuthSettings `json:"auth"`
+}
+
+// HealthSettings 서비스 인스턴스 헬스 체크 정책입니다.
+type HealthSettings struct {
+	Enabled          *bool  `json:"enabled"`
+	Path             string `json:"path"`
+	Interval         string `json:"interval"`
+	Timeout          string `json:"timeout"`
+	Jitter           string `json:"jitter"`
+	MaxBackoff        string `json:"max-backoff"`
+	FailureThreshold int    `json:"failure-threshold"`
+	SuccessThreshold int    `json:"success-threshold"`
 }
 
 // AuthSettings 인증 관련 설정 정보입니다.
@@ -74,9 +87,10 @@ type EndpointSettings struct {
 
 // InstanceSettings 서비스 인스턴스의 네트워크 주소입니다.
 type InstanceSettings struct {
-	Scheme string `json:"scheme"`
-	Host   string `json:"host"`
-	Port   string `json:"port"`
+	Scheme    string `json:"scheme"`
+	Host      string `json:"host"`
+	Port      string `json:"port"`
+	HealthKey string `json:"-"`
 }
 
 // UnmarshalJSON instance port를 숫자 또는 문자열 JSON 값에서 읽습니다.
@@ -112,6 +126,7 @@ func (s *InstanceSettings) UnmarshalJSON(data []byte) error {
 type ServiceSettings struct {
 	ServiceName string
 	Global      *GlobalSettings
+	Health      *HealthSettings
 	Threshold   *ThresholdSettings
 	Endpoints   []EndpointSettings
 	Instances   []InstanceSettings

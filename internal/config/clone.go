@@ -7,6 +7,7 @@ func (s ServiceSettings) Clone() ServiceSettings {
 	return ServiceSettings{
 		ServiceName: s.ServiceName,
 		Global:      s.Global.Clone(),
+		Health:      s.Health.Clone(),
 		Threshold:   s.Threshold.Clone(),
 		Endpoints:   EndpointSettingsList(s.Endpoints).Clone(),
 		Instances:   append([]InstanceSettings(nil), s.Instances...),
@@ -19,6 +20,29 @@ func (g *GlobalSettings) Clone() *GlobalSettings {
 	}
 	return &GlobalSettings{
 		Auth: g.Auth.Clone(),
+	}
+}
+
+func (h *HealthSettings) Clone() *HealthSettings {
+	if h == nil {
+		return nil
+	}
+
+	var enabled *bool
+	if h.Enabled != nil {
+		value := *h.Enabled
+		enabled = &value
+	}
+
+	return &HealthSettings{
+		Enabled:          enabled,
+		Path:             h.Path,
+		Interval:         h.Interval,
+		Timeout:          h.Timeout,
+		Jitter:           h.Jitter,
+		MaxBackoff:        h.MaxBackoff,
+		FailureThreshold: h.FailureThreshold,
+		SuccessThreshold: h.SuccessThreshold,
 	}
 }
 
@@ -52,9 +76,10 @@ func (i *InstanceSettings) Clone() *InstanceSettings {
 		return nil
 	}
 	return &InstanceSettings{
-		Scheme: i.Scheme,
-		Host:   i.Host,
-		Port:   i.Port,
+		Scheme:    i.Scheme,
+		Host:      i.Host,
+		Port:      i.Port,
+		HealthKey: i.HealthKey,
 	}
 }
 

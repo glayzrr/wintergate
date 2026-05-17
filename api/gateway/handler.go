@@ -81,6 +81,8 @@ func receiveFailure(err error) (int, string) {
 		return http.StatusBadRequest, responseReceiveFailed
 	case errors.Is(err, routeconfig.ErrConfigNotFound):
 		return http.StatusBadRequest, responseReceiveFailed
+	case errors.Is(err, routeconfig.ErrNoHealthyInstance):
+		return http.StatusServiceUnavailable, responseReceiveFailed
 	case errors.Is(err, internalauth.ErrInvalidAuthorizationHeader):
 		return http.StatusUnauthorized, responseUnauthorized
 	case errors.Is(err, internalauth.ErrInvalidAudience):
