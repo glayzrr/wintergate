@@ -60,7 +60,7 @@ func (s *Store) Delete(healthKey string) {
 	})
 }
 
-// UpdateStatus 등록된 health key의 상태를 copy-on-write 방식으로 갱신합니다.
+// UpdateStatus 등록된 health key의 상태를 갱신합니다.
 func (s *Store) UpdateStatus(healthKey string, generation uint64, status Status, consecutiveFailures, consecutiveSuccesses int, err error) (statusRecord, bool) {
 	if s == nil || healthKey == "" {
 		return statusRecord{}, false
@@ -76,6 +76,7 @@ func (s *Store) UpdateStatus(healthKey string, generation uint64, status Status,
 	s.update(func(records map[string]statusRecord) {
 		var found bool
 		previous, found = records[healthKey]
+		// health check 도중 설정이 바뀌게 되는 경우 이전 상태는 무시합니다.
 		if !found || previous.generation != generation {
 			return
 		}

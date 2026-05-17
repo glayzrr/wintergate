@@ -55,6 +55,7 @@ type statusRecord struct {
 	checkedAt            time.Time
 	consecutiveFailures  int
 	consecutiveSuccesses int
+	// generation은 이전 health goroutine의 늦은 상태 갱신을 무시하기 위해 사용합니다.
 	generation           uint64
 	lastError            string
 }
