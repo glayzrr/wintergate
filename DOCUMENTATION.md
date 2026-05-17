@@ -1211,7 +1211,7 @@ SetUnknown 지정한 health key를 unknown 상태로 초기화합니다.
 func (s *Store) UpdateStatus(healthKey string, generation uint64, status Status, consecutiveFailures, consecutiveSuccesses int, err error) (statusRecord, bool)
 ```
 
-UpdateStatus 등록된 health key의 상태를 copy\-on\-write 방식으로 갱신합니다.
+UpdateStatus 등록된 health key의 상태를 갱신합니다.
 
 # metric
 
