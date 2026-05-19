@@ -1,0 +1,13 @@
+services:
+  wintergate:
+    build: .
+    image: wintergate:latest
+    container_name: wintergate
+    environment:
+      PORT: "1313"
+      GIN_MODE: release
+    ports:
+      - "1313:1313"
+    volumes:
+      - ./config/config.yml:/app/config/config.yml:ro
+    restart: unless-stopped
