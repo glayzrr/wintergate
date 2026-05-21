@@ -1317,6 +1317,7 @@ import "wintergate/internal/pool"
 - [func Configure\(configs map\[Tier\]Config, tier Tier\) error](<#Configure>)
 - [func LoadConfig\(path string\) error](<#LoadConfig>)
 - [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
+- [func ProxyFor\(target url.URL, lease ClientLease\) \*httputil.ReverseProxy](<#ProxyFor>)
 - [type Assignment](<#Assignment>)
 - [type ClientLease](<#ClientLease>)
 - [type ClientProvider](<#ClientProvider>)
@@ -1329,7 +1330,7 @@ import "wintergate/internal/pool"
 - [type ForwardRequest](<#ForwardRequest>)
 - [type Forwarder](<#Forwarder>)
   - [func NewForwarder\(clients ClientProvider, recorder \*metricrecord.Recorder\) \*Forwarder](<#NewForwarder>)
-  - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) error](<#Forwarder.Handle>)
+  - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) \(err error\)](<#Forwarder.Handle>)
 - [type Recorder](<#Recorder>)
   - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
   - [func \(r \*Recorder\) Start\(configKey string\) DoneFunc](<#Recorder.Start>)
@@ -1386,6 +1387,15 @@ func NewTransport(tier Tier) (*http.Transport, error)
 ```
 
 NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
+
+<a name="ProxyFor"></a>
+## func ProxyFor
+
+```go
+func ProxyFor(target url.URL, lease ClientLease) *httputil.ReverseProxy
+```
+
+
 
 <a name="Assignment"></a>
 ## type Assignment
@@ -1527,7 +1537,7 @@ NewForwarder pool client provider와 metric recorder를 사용하는 Forwarder�
 ### func \(\*Forwarder\) Handle
 
 ```go
-func (f *Forwarder) Handle(request ForwardRequest) error
+func (f *Forwarder) Handle(request ForwardRequest) (err error)
 ```
 
 Handle 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
