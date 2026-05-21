@@ -1,5 +1,11 @@
 package pool
 
+import (
+	"io"
+	"log"
+	"sync"
+)
+
 // Tier 트래픽 규모별 커넥션 풀 설정 단계를 표현합니다.
 type Tier string
 
@@ -10,4 +16,17 @@ const (
 	TierHot Tier = "hot"
 	// TierSuper 매우 높은 트래픽을 받는 서비스용 풀 설정입니다.
 	TierSuper Tier = "super"
+)
+
+const reverseProxyBufferSize = 32 * 1024
+
+var (
+	reverseProxyErrorLog   = log.New(io.Discard, "", 0)
+	reverseProxyBufferPool = &byteBufferPool{
+		pool: sync.Pool{
+			New: func() any {
+				return make([]byte, reverseProxyBufferSize)
+			},
+		},
+	}
 )

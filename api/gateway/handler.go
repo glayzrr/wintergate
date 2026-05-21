@@ -50,6 +50,10 @@ func (h *Handler) Receive(ctx *gin.Context) {
 		HTTPRequest:         ctx.Request,
 	})
 	if err != nil {
+		if ctx.Writer.Written() {
+			return
+		}
+
 		statusCode, message := receiveFailure(err)
 		ctx.AbortWithStatusJSON(statusCode, responseapi.APIResponse{
 			Success: false,
