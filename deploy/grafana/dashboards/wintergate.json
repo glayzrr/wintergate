@@ -317,11 +317,16 @@
       "targets": [
         {
           "expr": "1000 * histogram_quantile(0.95, sum by (le, service, tier, pool) (rate(wintergate_upstream_connection_wait_duration_seconds_bucket[5m])))",
-          "legendFormat": "p95 {{service}} {{tier}} {{pool}}",
+          "legendFormat": "wait p95 {{service}} {{tier}} {{pool}}",
           "refId": "A"
+        },
+        {
+          "expr": "1000 * histogram_quantile(0.95, sum by (le, service, tier, pool) (rate(wintergate_upstream_connection_dial_duration_seconds_bucket[5m])))",
+          "legendFormat": "dial p95 {{service}} {{tier}} {{pool}}",
+          "refId": "B"
         }
       ],
-      "title": "Connection Wait p95",
+      "title": "Connection Wait/Dial p95",
       "type": "timeseries"
     },
     {

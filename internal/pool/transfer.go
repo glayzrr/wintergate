@@ -144,10 +144,24 @@ func (f *Forwarder) Handle(request ForwardRequest) error {
 	}
 
 	var getConnAt time.Time
+	var dialStartedAt time.Time
+	var dialDuration time.Duration
+	var dialed bool
 	if f.recorder != nil {
 		trace := &httptrace.ClientTrace{
 			GetConn: func(_ string) {
 				getConnAt = time.Now()
+			},
+			ConnectStart: func(_, _ string) {
+				dialStartedAt = time.Now()
+			},
+			ConnectDone: func(_, _ string, err error) {
+				if err != nil || dialStartedAt.IsZero() {
+					return
+				}
+
+				dialDuration = time.Since(dialStartedAt)
+				dialed = true
 			},
 			GotConn: func(info httptrace.GotConnInfo) {
 				waitDuration := time.Duration(0)
@@ -160,6 +174,8 @@ func (f *Forwarder) Handle(request ForwardRequest) error {
 					Reused:       info.Reused,
 					WasIdle:      info.WasIdle,
 					WaitDuration: waitDuration,
+					Dialed:       dialed,
+					DialDuration: dialDuration,
 				})
 			},
 		}

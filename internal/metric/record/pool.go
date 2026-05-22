@@ -28,6 +28,8 @@ type ConnectionObservation struct {
 	Reused       bool
 	WasIdle      bool
 	WaitDuration time.Duration
+	Dialed       bool
+	DialDuration time.Duration
 }
 
 // PoolDoneFunc 커넥션 풀 사용 종료 시 메트릭을 기록합니다.
@@ -42,6 +44,7 @@ type PoolRecorder struct {
 
 	connectionEvents *prometheus.CounterVec
 	connectionWait   *prometheus.HistogramVec
+	connectionDial   *prometheus.HistogramVec
 }
 
 func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
@@ -108,6 +111,17 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 			},
 			[]string{labelService, labelTier, labelPool, labelUpstream},
 		),
+		// 새 upstream TCP 연결을 여는 데 걸린 시간을 기록합니다.
+		connectionDial: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: namespace,
+				Subsystem: "upstream_connection",
+				Name:      "dial_duration_seconds",
+				Help:      "Time spent dialing a new upstream connection.",
+				Buckets:   connectionDialDurationBuckets,
+			},
+			[]string{labelService, labelTier, labelPool, labelUpstream},
+		),
 	}
 
 	if registry != nil {
@@ -118,6 +132,7 @@ func newPoolRecorder(registry *prometheus.Registry) *PoolRecorder {
 			recorder.inFlight,
 			recorder.connectionEvents,
 			recorder.connectionWait,
+			recorder.connectionDial,
 		)
 	}
 
@@ -165,6 +180,14 @@ func (r *PoolRecorder) recordConnection(observation PoolObservation, connection 
 		waitDuration = 0
 	}
 	r.connectionWait.WithLabelValues(service, tier, pool, upstream).Observe(waitDuration.Seconds())
+
+	if connection.Dialed {
+		dialDuration := connection.DialDuration
+		if dialDuration < 0 {
+			dialDuration = 0
+		}
+		r.connectionDial.WithLabelValues(service, tier, pool, upstream).Observe(dialDuration.Seconds())
+	}
 }
 
 func connectionEventFor(connection ConnectionObservation) string {

@@ -44,3 +44,5 @@ var connectionWaitDurationBuckets = []float64{
 	0.5,
 	1,
 }
+
+var connectionDialDurationBuckets = connectionWaitDurationBuckets

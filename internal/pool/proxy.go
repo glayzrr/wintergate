@@ -38,9 +38,23 @@ func (t tracingTransport) RoundTrip(request *http.Request) (*http.Response, erro
 	}
 
 	var getConnAt time.Time
+	var dialStartedAt time.Time
+	var dialDuration time.Duration
+	var dialed bool
 	trace := &httptrace.ClientTrace{
 		GetConn: func(_ string) {
 			getConnAt = time.Now()
+		},
+		ConnectStart: func(_, _ string) {
+			dialStartedAt = time.Now()
+		},
+		ConnectDone: func(_, _ string, err error) {
+			if err != nil || dialStartedAt.IsZero() {
+				return
+			}
+
+			dialDuration = time.Since(dialStartedAt)
+			dialed = true
 		},
 		GotConn: func(info httptrace.GotConnInfo) {
 			waitDuration := time.Duration(0)
@@ -53,6 +67,8 @@ func (t tracingTransport) RoundTrip(request *http.Request) (*http.Response, erro
 				Reused:       info.Reused,
 				WasIdle:      info.WasIdle,
 				WaitDuration: waitDuration,
+				Dialed:       dialed,
+				DialDuration: dialDuration,
 			})
 		},
 	}
