@@ -11,6 +11,7 @@ import (
 )
 
 // TokenDecoder Bearer 토큰을 검증하고 claims를 반환하는 계약입니다.
+// 주입 구현체: NewAuthenticateTask에 *internalauth.Decoder가 들어옵니다.
 type TokenDecoder interface {
 	DecodeFor(snapshot *internalconfig.Snapshot, serviceName, token string) (internalauth.Claims, error)
 }

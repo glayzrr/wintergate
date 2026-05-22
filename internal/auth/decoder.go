@@ -31,6 +31,7 @@ type Decoder struct {
 }
 
 // ConfigProvider 서비스 이름별 인증 설정과 공개키를 조회합니다.
+// 주입 구현체: NewDecoder에 *authconfig.Store가 들어옵니다.
 type ConfigProvider interface {
 	SnapshotFor(snapshot *internalconfig.Snapshot, serviceName string) (authconfig.Config, bool)
 	PublicKeyFor(snapshot *internalconfig.Snapshot, serviceName, kid string) (*rsa.PublicKey, error)

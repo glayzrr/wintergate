@@ -12,16 +12,19 @@ import (
 )
 
 // PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다.
+// 주입 구현체: NewTransferTask에 *pool.Store가 들어옵니다.
 type PoolProvider interface {
 	AssignmentFor(snapshot *internalconfig.Snapshot, status pool.Status) pool.Assignment
 }
 
 // PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다.
+// 주입 구현체: NewTransferTask에 *pool.Forwarder가 들어옵니다.
 type PoolForwarder interface {
 	Handle(request pool.ForwardRequest) error
 }
 
 // TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다.
+// 주입 구현체: NewTransferTask에 *pool.Recorder가 들어옵니다.
 type TrafficRecorder interface {
 	Start(configKey string) pool.DoneFunc
 	StatusFor(configKey string) (pool.Status, error)

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
 	metricrecord "wintergate/internal/metric/record"
@@ -131,34 +130,16 @@ func (f *Forwarder) Handle(request ForwardRequest) (err error) {
 	// Rewrite 콜백에서 매 요청마다 독립된 URL 포인터를 사용할 수 있도록 대상 값을 복사합니다.
 	target := *targetURL
 	var proxyErr error
-	proxy := &httputil.ReverseProxy{
-		Rewrite: func(proxyRequest *httputil.ProxyRequest) {
-			// 원본 요청의 메서드와 본문은 유지하고, 목적지만 선택된 업스트림으로 교체합니다.
-			outURL := target
-			proxyRequest.Out.URL = &outURL
-			proxyRequest.Out.Host = outURL.Host
-			proxyRequest.Out.RequestURI = ""
-			proxyRequest.SetXForwarded()
-		},
-		Transport: tracingTransport{
-			base:        lease.Client.Transport,
-			recorder:    f.recorder,
-			observation: poolObservation,
-		},
-		ErrorLog:   reverseProxyErrorLog,
-		BufferPool: reverseProxyBufferPool,
-		ModifyResponse: func(response *http.Response) error {
-			// 업스트림 응답 헤더를 받은 시점의 상태 코드를 pool 요청 결과로 기록합니다.
-			finishPool(response.StatusCode)
-			return nil
-		},
-		ErrorHandler: func(writer http.ResponseWriter, _ *http.Request, proxyError error) {
-			// 업스트림 연결 또는 전송 실패는 클라이언트에게 502로 응답하고 호출자에게도 반환합니다.
+	proxy := buildReverseProxy(reverseProxyConfig{
+		target:      target,
+		transport:   lease.Client.Transport,
+		recorder:    f.recorder,
+		observation: poolObservation,
+		onStatus:    finishPool,
+		onError: func(proxyError error) {
 			proxyErr = proxyError
-			finishPool(http.StatusBadGateway)
-			http.Error(writer, "Bad Gateway", http.StatusBadGateway)
 		},
-	}
+	})
 
 	// ReverseProxy가 응답 복사까지 수행하므로 ServeHTTP 반환 후에는 프록시 에러만 확인합니다.
 	proxy.ServeHTTP(request.Writer, request.Request)

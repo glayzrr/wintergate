@@ -25,6 +25,7 @@ type ClientLease struct {
 }
 
 // ClientProvider 요청별 pool 결정 결과에 맞는 http.Client를 대여합니다.
+// 주입 구현체: NewForwarder에 *Coordinator가 들어옵니다.
 type ClientProvider interface {
 	Acquire(Assignment) (ClientLease, error)
 }

@@ -17,16 +17,19 @@ type RouteTask struct {
 }
 
 // SettingsProvider 현재 활성 설정 snapshot을 제공합니다.
+// 주입 구현체: NewRouteTask에 *internalconfig.Manager가 들어옵니다.
 type SettingsProvider interface {
 	Settings() *internalconfig.Snapshot
 }
 
 // Router HTTP method와 path에 대응하는 라우팅 정보를 조회합니다.
+// 주입 구현체: NewRouteTask에 *routeconfig.Router가 들어옵니다.
 type Router interface {
 	RouteFor(snapshot *internalconfig.Snapshot, method, path string) (routeconfig.RouteInfo, bool)
 }
 
 // InstanceSelector 라우팅된 서비스의 업스트림 인스턴스를 선택합니다.
+// 주입 구현체: NewRouteTask에 *routeconfig.LoadBalancer가 들어옵니다.
 type InstanceSelector interface {
 	NextInstance(snapshot *internalconfig.Snapshot, serviceName string) (internalconfig.InstanceSettings, error)
 }

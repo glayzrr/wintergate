@@ -16,6 +16,7 @@ type LoadBalancer struct {
 }
 
 // HealthStatusProvider 인스턴스가 라우팅 후보로 사용할 수 있는 상태인지 알려줍니다.
+// 주입 구현체: NewLoadBalancer에 *health.Store가 들어옵니다.
 type HealthStatusProvider interface {
 	IsRoutableKey(healthKey string) bool
 }

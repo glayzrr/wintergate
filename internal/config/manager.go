@@ -7,16 +7,19 @@ import (
 )
 
 // Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다.
+// 주입 구현체: AddValidator에 *routeconfig.Validator, *authconfig.Store, *pool.Store가 들어옵니다.
 type Validator interface {
 	Validate(candidate Snapshot) error
 }
 
 // SnapshotListener 활성 설정 스냅샷 commit 이후 알림을 받습니다.
+// 주입 구현체: AddSnapshotListener에 *health.Manager가 들어옵니다.
 type SnapshotListener interface {
 	OnSnapshotCommitted(snapshot *Snapshot)
 }
 
 // SettingsProvider 현재 활성 설정 스냅샷을 제공합니다.
+// 주입 구현체: *Manager입니다.
 type SettingsProvider interface {
 	Settings() *Snapshot
 }

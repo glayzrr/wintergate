@@ -7,6 +7,7 @@ import (
 )
 
 // Task 게이트웨이 요청 처리 중 개별 작업 단위를 정의합니다.
+// 주입 구현체: NewOrchestrator에 *RouteTask, *TraceTask, *AuthenticateTask, *AuthorizeTask, *TransferTask가 들어옵니다.
 type Task interface {
 	// Run 요청 처리 상태를 읽거나 갱신하고 실패 시 에러를 반환합니다.
 	Run(ctx context.Context, state *State) error
