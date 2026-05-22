@@ -2105,6 +2105,8 @@ type ConnectionObservation struct {
     Reused       bool
     WasIdle      bool
     WaitDuration time.Duration
+    Dialed       bool
+    DialDuration time.Duration
 }
 ```
 
