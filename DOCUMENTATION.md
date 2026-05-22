@@ -1329,7 +1329,7 @@ import "wintergate/internal/pool"
 - [type ForwardRequest](<#ForwardRequest>)
 - [type Forwarder](<#Forwarder>)
   - [func NewForwarder\(clients ClientProvider, recorder \*metricrecord.Recorder\) \*Forwarder](<#NewForwarder>)
-  - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) \(err error\)](<#Forwarder.Handle>)
+  - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) error](<#Forwarder.Handle>)
 - [type Recorder](<#Recorder>)
   - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
   - [func \(r \*Recorder\) Start\(configKey string\) DoneFunc](<#Recorder.Start>)
@@ -1527,7 +1527,7 @@ NewForwarder pool client provider와 metric recorder를 사용하는 Forwarder�
 ### func \(\*Forwarder\) Handle
 
 ```go
-func (f *Forwarder) Handle(request ForwardRequest) (err error)
+func (f *Forwarder) Handle(request ForwardRequest) error
 ```
 
 Handle 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
