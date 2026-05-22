@@ -1,9 +1,11 @@
 package pool
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -74,6 +76,9 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 		if r.Header.Get("X-Request-ID") != "request-1" {
 			t.Fatalf("X-Request-ID = %q, want %q", r.Header.Get("X-Request-ID"), "request-1")
 		}
+		if r.Header.Get("X-Forwarded-For") != "" {
+			t.Fatalf("X-Forwarded-For = %q, want empty", r.Header.Get("X-Forwarded-For"))
+		}
 
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -124,6 +129,122 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 	}
 	if string(body) != "created" {
 		t.Fatalf("body = %q, want %q", string(body), "created")
+	}
+}
+
+func TestIsWebSocketRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		header http.Header
+		want bool
+	}{
+		{
+			name: "websocket upgrade",
+			header: http.Header{
+				"Connection": []string{"keep-alive, Upgrade"},
+				"Upgrade":    []string{"websocket"},
+			},
+			want: true,
+		},
+		{
+			name: "missing connection upgrade",
+			header: http.Header{
+				"Upgrade": []string{"websocket"},
+			},
+			want: false,
+		},
+		{
+			name: "non websocket upgrade",
+			header: http.Header{
+				"Connection": []string{"Upgrade"},
+				"Upgrade":    []string{"h2c"},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.Header = tt.header
+
+			if got := isWebSocketRequest(request); got != tt.want {
+				t.Fatalf("isWebSocketRequest = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleRequestUsesReverseProxyForWebSocket(t *testing.T) {
+	upstreamHeaders := make(chan http.Header, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isWebSocketRequest(r) {
+			http.Error(w, "upgrade required", http.StatusBadRequest)
+			return
+		}
+		upstreamHeaders <- r.Header.Clone()
+
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "hijack unavailable", http.StatusInternalServerError)
+			return
+		}
+
+		conn, buffer, err := hijacker.Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		if _, err := buffer.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"); err != nil {
+			return
+		}
+		_ = buffer.Flush()
+	}))
+	defer upstream.Close()
+
+	forwarder := NewForwarder(NewCoordinator(), nil)
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := forwarder.Handle(ForwardRequest{
+			Address: upstream.URL,
+			Writer:  w,
+			Request: r,
+			Assignment: Assignment{
+				ServiceName: "order-service",
+				Tier:        TierNormal,
+			},
+		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+		}
+	}))
+	defer gateway.Close()
+
+	conn, err := net.Dial("tcp", strings.TrimPrefix(gateway.URL, "http://"))
+	if err != nil {
+		t.Fatalf("Dial returned error: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := io.WriteString(conn, "GET /socket HTTP/1.1\r\nHost: gateway.local\r\nConnection: keep-alive, Upgrade\r\nUpgrade: websocket\r\n\r\n"); err != nil {
+		t.Fatalf("WriteString returned error: %v", err)
+	}
+
+	statusLine, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil {
+		t.Fatalf("ReadString returned error: %v", err)
+	}
+	if !strings.Contains(statusLine, "101 Switching Protocols") {
+		t.Fatalf("status line = %q, want 101 Switching Protocols", statusLine)
+	}
+
+	select {
+	case header := <-upstreamHeaders:
+		if header.Get("X-Forwarded-For") == "" {
+			t.Fatal("X-Forwarded-For is empty, want reverse proxy forwarded header")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for upstream websocket request")
 	}
 }
 

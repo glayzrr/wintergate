@@ -1,11 +1,14 @@
 package pool
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"time"
+
 	metricrecord "wintergate/internal/metric/record"
 )
 
@@ -94,4 +97,26 @@ func buildReverseProxy(config reverseProxyConfig) *httputil.ReverseProxy {
 	}
 
 	return proxy
+}
+
+func serveReverseProxy(proxy *httputil.ReverseProxy, writer http.ResponseWriter, request *http.Request) (err error) {
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+
+		// ReverseProxy가 응답 본문 복사 실패를 http.ErrAbortHandler panic으로 전달하면 함수 에러로 변환합니다.
+		recoveredErr, ok := recovered.(error)
+		if ok && errors.Is(recoveredErr, http.ErrAbortHandler) {
+			err = fmt.Errorf("copy upstream response body: %w", recoveredErr)
+			return
+		}
+
+		// 예상한 프록시 전송 실패가 아닌 panic은 상위 런타임의 복구 정책을 따르도록 다시 전파합니다.
+		panic(recovered)
+	}()
+
+	proxy.ServeHTTP(writer, request)
+	return nil
 }

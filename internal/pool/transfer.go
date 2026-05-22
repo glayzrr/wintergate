@@ -1,11 +1,14 @@
 package pool
 
 import (
-	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
+	"time"
+
 	metricrecord "wintergate/internal/metric/record"
 )
 
@@ -60,24 +63,7 @@ func makePool(config Config) (*http.Transport, error) {
 }
 
 // Handle 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
-func (f *Forwarder) Handle(request ForwardRequest) (err error) {
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			return
-		}
-
-		// ReverseProxy가 응답 본문 복사 실패를 http.ErrAbortHandler panic으로 전달하면 함수 에러로 변환합니다.
-		recoveredErr, ok := recovered.(error)
-		if ok && errors.Is(recoveredErr, http.ErrAbortHandler) {
-			err = fmt.Errorf("copy upstream response body: %w", recoveredErr)
-			return
-		}
-
-		// 예상한 프록시 전송 실패가 아닌 panic은 상위 런타임의 복구 정책을 따르도록 다시 전파합니다.
-		panic(recovered)
-	}()
-
+func (f *Forwarder) Handle(request ForwardRequest) error {
 	// 요청 배정 결과에 맞는 클라이언트 lease를 확보하고, 핸들러 종료 시 반납합니다.
 	lease, err := f.clients.Acquire(request.Assignment)
 	if err != nil {
@@ -90,7 +76,7 @@ func (f *Forwarder) Handle(request ForwardRequest) (err error) {
 		return fmt.Errorf("%w: http client is nil", ErrInvalidConfig)
 	}
 
-	// ReverseProxy 구성 전에 요청 객체와 응답 writer가 유효한지 확인합니다.
+	// 업스트림 요청 전에 요청 객체와 응답 writer가 유효한지 확인합니다.
 	if request.Request == nil {
 		return fmt.Errorf("%w: request is nil", ErrInvalidConfig)
 	}
@@ -98,7 +84,7 @@ func (f *Forwarder) Handle(request ForwardRequest) (err error) {
 		return fmt.Errorf("%w: response writer is nil", ErrInvalidConfig)
 	}
 
-	// 업스트림 주소와 원본 요청 경로를 합쳐 ReverseProxy가 사용할 대상 URL을 만듭니다.
+	// 업스트림 주소와 원본 요청 경로를 합쳐 업스트림 요청 대상 URL을 만듭니다.
 	targetURL, err := upstreamURL(request.Address, request.Request.URL)
 	if err != nil {
 		return err
@@ -127,27 +113,93 @@ func (f *Forwarder) Handle(request ForwardRequest) (err error) {
 		}
 	}
 
-	// Rewrite 콜백에서 매 요청마다 독립된 URL 포인터를 사용할 수 있도록 대상 값을 복사합니다.
-	target := *targetURL
-	var proxyErr error
-	proxy := buildReverseProxy(reverseProxyConfig{
-		target:      target,
-		transport:   lease.Client.Transport,
-		recorder:    f.recorder,
-		observation: poolObservation,
-		onStatus:    finishPool,
-		onError: func(proxyError error) {
-			proxyErr = proxyError
-		},
-	})
+	// 웹소켓 요청만 ReverseProxy로 처리합니다.
+	if isWebSocketRequest(request.Request) {
+		target := *targetURL
+		var proxyErr error
+		proxy := buildReverseProxy(reverseProxyConfig{
+			target:      target,
+			transport:   lease.Client.Transport,
+			recorder:    f.recorder,
+			observation: poolObservation,
+			onStatus:    finishPool,
+			onError: func(proxyError error) {
+				proxyErr = proxyError
+			},
+		})
 
-	// ReverseProxy가 응답 복사까지 수행하므로 ServeHTTP 반환 후에는 프록시 에러만 확인합니다.
-	proxy.ServeHTTP(request.Writer, request.Request)
-	if proxyErr != nil {
-		return fmt.Errorf("proxy upstream request: %w", proxyErr)
+		if err := serveReverseProxy(proxy, request.Writer, request.Request); err != nil {
+			return err
+		}
+		if proxyErr != nil {
+			return fmt.Errorf("proxy upstream request: %w", proxyErr)
+		}
+
+		return nil
+	}
+
+	outReq, err := upstreamRequest(*targetURL, request.Request)
+	if err != nil {
+		return err
+	}
+
+	var getConnAt time.Time
+	if f.recorder != nil {
+		trace := &httptrace.ClientTrace{
+			GetConn: func(_ string) {
+				getConnAt = time.Now()
+			},
+			GotConn: func(info httptrace.GotConnInfo) {
+				waitDuration := time.Duration(0)
+				if !getConnAt.IsZero() {
+					waitDuration = time.Since(getConnAt)
+				}
+
+				// httptrace가 알려준 connection 획득 결과를 record 패키지에 전달해 event label은 내부에서 정합니다.
+				f.recorder.RecordConnection(poolObservation, metricrecord.ConnectionObservation{
+					Reused:       info.Reused,
+					WasIdle:      info.WasIdle,
+					WaitDuration: waitDuration,
+				})
+			},
+		}
+
+		outReq = outReq.WithContext(httptrace.WithClientTrace(outReq.Context(), trace))
+	}
+
+	response, err := lease.Client.Do(outReq)
+	if err != nil {
+		finishPool(http.StatusBadGateway)
+		http.Error(request.Writer, "Bad Gateway", http.StatusBadGateway)
+		return err
+	}
+	defer response.Body.Close()
+
+	finishPool(response.StatusCode)
+	copyHeader(request.Writer.Header(), response.Header)
+	removeHopByHopHeaders(request.Writer.Header())
+	request.Writer.WriteHeader(response.StatusCode)
+
+	if _, err := io.Copy(request.Writer, response.Body); err != nil {
+		return fmt.Errorf("copy upstream response body: %w", err)
 	}
 
 	return nil
+}
+
+func upstreamRequest(target url.URL, request *http.Request) (*http.Request, error) {
+	if request == nil {
+		return nil, fmt.Errorf("%w: request is nil", ErrInvalidConfig)
+	}
+
+	outReq := request.Clone(request.Context())
+	outReq.URL = &target
+	outReq.Host = target.Host
+	outReq.RequestURI = ""
+	outReq.Header = request.Header.Clone()
+	removeHopByHopHeaders(outReq.Header)
+
+	return outReq, nil
 }
 
 func upstreamURL(host string, requestURL *url.URL) (*url.URL, error) {
@@ -185,4 +237,58 @@ func joinURLPath(basePath, requestPath string) string {
 	default:
 		return basePath + requestPath
 	}
+}
+
+func isWebSocketRequest(request *http.Request) bool {
+	if request == nil {
+		return false
+	}
+
+	return headerHasToken(request.Header, "Connection", "upgrade") &&
+		strings.EqualFold(strings.TrimSpace(request.Header.Get("Upgrade")), "websocket")
+}
+
+func headerHasToken(header http.Header, key, token string) bool {
+	for _, value := range header.Values(key) {
+		for _, field := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(field), token) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func copyHeader(dst, src http.Header) {
+	for key, values := range src {
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
+func removeHopByHopHeaders(header http.Header) {
+	for _, connectionHeader := range header.Values("Connection") {
+		for _, field := range strings.Split(connectionHeader, ",") {
+			if trimmedField := strings.TrimSpace(field); trimmedField != "" {
+				header.Del(trimmedField)
+			}
+		}
+	}
+
+	for _, key := range hopByHopHeaders {
+		header.Del(key)
+	}
+}
+
+var hopByHopHeaders = []string{
+	"Connection",
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",
+	"Trailer",
+	"Transfer-Encoding",
+	"Upgrade",
 }
