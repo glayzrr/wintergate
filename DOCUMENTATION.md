@@ -264,7 +264,7 @@ type Claims struct {
 <a name="ConfigProvider"></a>
 ## type ConfigProvider
 
-ConfigProvider 서비스 이름별 인증 설정과 공개키를 조회합니다.
+ConfigProvider 서비스 이름별 인증 설정과 공개키를 조회합니다. 주입 구현체: NewDecoder에 \*authconfig.Store가 들어옵니다.
 
 ```go
 type ConfigProvider interface {
@@ -663,7 +663,7 @@ type Settings struct {
 <a name="SettingsProvider"></a>
 ## type SettingsProvider
 
-SettingsProvider 현재 활성 설정 스냅샷을 제공합니다.
+SettingsProvider 현재 활성 설정 스냅샷을 제공합니다. 주입 구현체: \*Manager입니다.
 
 ```go
 type SettingsProvider interface {
@@ -688,7 +688,7 @@ type Snapshot struct {
 <a name="SnapshotListener"></a>
 ## type SnapshotListener
 
-SnapshotListener 활성 설정 스냅샷 commit 이후 알림을 받습니다.
+SnapshotListener 활성 설정 스냅샷 commit 이후 알림을 받습니다. 주입 구현체: AddSnapshotListener에 \*health.Manager가 들어옵니다.
 
 ```go
 type SnapshotListener interface {
@@ -733,7 +733,7 @@ func (t *ThresholdSettings) Clone() *ThresholdSettings
 <a name="Validator"></a>
 ## type Validator
 
-Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다.
+Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다. 주입 구현체: AddValidator에 \*routeconfig.Validator, \*authconfig.Store, \*pool.Store가 들어옵니다.
 
 ```go
 type Validator interface {
@@ -852,7 +852,7 @@ Run 라우트 정책에 roles가 있으면 claims의 roles와 비교합니다.
 <a name="InstanceSelector"></a>
 ## type InstanceSelector
 
-InstanceSelector 라우팅된 서비스의 업스트림 인스턴스를 선택합니다.
+InstanceSelector 라우팅된 서비스의 업스트림 인스턴스를 선택합니다. 주입 구현체: NewRouteTask에 \*routeconfig.LoadBalancer가 들어옵니다.
 
 ```go
 type InstanceSelector interface {
@@ -892,7 +892,7 @@ Receive 게이트웨이로 들어온 요청에 대해 등록된 작업을 순차
 <a name="PoolForwarder"></a>
 ## type PoolForwarder
 
-PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다.
+PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다. 주입 구현체: NewTransferTask에 \*pool.Forwarder가 들어옵니다.
 
 ```go
 type PoolForwarder interface {
@@ -903,7 +903,7 @@ type PoolForwarder interface {
 <a name="PoolProvider"></a>
 ## type PoolProvider
 
-PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다.
+PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다. 주입 구현체: NewTransferTask에 \*pool.Store가 들어옵니다.
 
 ```go
 type PoolProvider interface {
@@ -960,7 +960,7 @@ Run 요청 method와 path에 대응하는 라우트 정책과 서비스 이름�
 <a name="Router"></a>
 ## type Router
 
-Router HTTP method와 path에 대응하는 라우팅 정보를 조회합니다.
+Router HTTP method와 path에 대응하는 라우팅 정보를 조회합니다. 주입 구현체: NewRouteTask에 \*routeconfig.Router가 들어옵니다.
 
 ```go
 type Router interface {
@@ -971,7 +971,7 @@ type Router interface {
 <a name="SettingsProvider"></a>
 ## type SettingsProvider
 
-SettingsProvider 현재 활성 설정 snapshot을 제공합니다.
+SettingsProvider 현재 활성 설정 snapshot을 제공합니다. 주입 구현체: NewRouteTask에 \*internalconfig.Manager가 들어옵니다.
 
 ```go
 type SettingsProvider interface {
@@ -996,7 +996,7 @@ type State struct {
 <a name="Task"></a>
 ## type Task
 
-Task 게이트웨이 요청 처리 중 개별 작업 단위를 정의합니다.
+Task 게이트웨이 요청 처리 중 개별 작업 단위를 정의합니다. 주입 구현체: NewOrchestrator에 \*RouteTask, \*TraceTask, \*AuthenticateTask, \*AuthorizeTask, \*TransferTask가 들어옵니다.
 
 ```go
 type Task interface {
@@ -1008,7 +1008,7 @@ type Task interface {
 <a name="TokenDecoder"></a>
 ## type TokenDecoder
 
-TokenDecoder Bearer 토큰을 검증하고 claims를 반환하는 계약입니다.
+TokenDecoder Bearer 토큰을 검증하고 claims를 반환하는 계약입니다. 주입 구현체: NewAuthenticateTask에 \*internalauth.Decoder가 들어옵니다.
 
 ```go
 type TokenDecoder interface {
@@ -1048,7 +1048,7 @@ Run 요청 ID를 상태, 요청 헤더, 응답 헤더에 반영합니다.
 <a name="TrafficRecorder"></a>
 ## type TrafficRecorder
 
-TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다.
+TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다. 주입 구현체: NewTransferTask에 \*pool.Recorder가 들어옵니다.
 
 ```go
 type TrafficRecorder interface {
@@ -1317,7 +1317,6 @@ import "wintergate/internal/pool"
 - [func Configure\(configs map\[Tier\]Config, tier Tier\) error](<#Configure>)
 - [func LoadConfig\(path string\) error](<#LoadConfig>)
 - [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
-- [func ProxyFor\(target url.URL, lease ClientLease\) \*httputil.ReverseProxy](<#ProxyFor>)
 - [type Assignment](<#Assignment>)
 - [type ClientLease](<#ClientLease>)
 - [type ClientProvider](<#ClientProvider>)
@@ -1388,15 +1387,6 @@ func NewTransport(tier Tier) (*http.Transport, error)
 
 NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
 
-<a name="ProxyFor"></a>
-## func ProxyFor
-
-```go
-func ProxyFor(target url.URL, lease ClientLease) *httputil.ReverseProxy
-```
-
-
-
 <a name="Assignment"></a>
 ## type Assignment
 
@@ -1426,7 +1416,7 @@ type ClientLease struct {
 <a name="ClientProvider"></a>
 ## type ClientProvider
 
-ClientProvider 요청별 pool 결정 결과에 맞는 http.Client를 대여합니다.
+ClientProvider 요청별 pool 결정 결과에 맞는 http.Client를 대여합니다. 주입 구현체: NewForwarder에 \*Coordinator가 들어옵니다.
 
 ```go
 type ClientProvider interface {
@@ -2288,7 +2278,7 @@ var ErrNoHealthyInstance = errors.New("no healthy instance")
 <a name="HealthStatusProvider"></a>
 ## type HealthStatusProvider
 
-HealthStatusProvider 인스턴스가 라우팅 후보로 사용할 수 있는 상태인지 알려줍니다.
+HealthStatusProvider 인스턴스가 라우팅 후보로 사용할 수 있는 상태인지 알려줍니다. 주입 구현체: NewLoadBalancer에 \*health.Store가 들어옵니다.
 
 ```go
 type HealthStatusProvider interface {
