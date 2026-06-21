@@ -20,59 +20,25 @@ type Config struct {
 }
 
 var (
-	defaultTier    Tier
-	defaultConfigs = map[Tier]Config{
-		TierNormal: {
-			Tier:                  TierNormal,
-			MaxIdleConns:          1024,
-			MaxIdleConnsPerHost:   512,
-			MaxConnsPerHost:       1024,
-			IdleConnTimeout:       90 * time.Second,
-			ResponseHeaderTimeout: 0,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-		TierHot: {
-			Tier:                  TierHot,
-			MaxIdleConns:          2048,
-			MaxIdleConnsPerHost:   1024,
-			MaxConnsPerHost:       2048,
-			IdleConnTimeout:       180 * time.Second,
-			ResponseHeaderTimeout: 0,
-			TLSHandshakeTimeout:   20 * time.Second,
-			ExpectContinueTimeout: 2 * time.Second,
-		},
-		TierSuper: {
-			Tier:                  TierSuper,
-			MaxIdleConns:          4096,
-			MaxIdleConnsPerHost:   2048,
-			MaxConnsPerHost:       4096,
-			IdleConnTimeout:       360 * time.Second,
-			ResponseHeaderTimeout: 0,
-			TLSHandshakeTimeout:   40 * time.Second,
-			ExpectContinueTimeout: 4 * time.Second,
-		},
-	}
+	sharedConfig Config
+	tierConfigs  map[Tier]Config
+	configured   bool
 )
 
-// Configure 서버 시작 시 읽은 커넥션 풀 설정을 기본 설정으로 반영합니다.
-func Configure(configs map[Tier]Config, tier Tier) error {
-	if utils.NormalizeTrimmed(string(tier)) == "" {
-		return fmt.Errorf("%w: default tier is required", ErrInvalidConfig)
+// Configure 서버 시작 시 읽은 공유풀과 티어별 풀 설정을 런타임 설정으로 반영합니다.
+func Configure(shared Config, tiers map[Tier]Config) error {
+	shared.Tier = ""
+	if err := validateConfig(shared); err != nil {
+		return fmt.Errorf("validate shared pool config: %w", err)
 	}
 
-	normalizedDefaultTier, err := poolTier(tier)
-	if err != nil {
-		return fmt.Errorf("normalize default tier: %w", err)
-	}
-
-	nextConfigs := make(map[Tier]Config, len(configs))
-	for tier, config := range configs {
+	nextTierConfigs := make(map[Tier]Config, len(tiers))
+	for tier, config := range tiers {
 		if utils.NormalizeTrimmed(string(tier)) == "" {
 			return fmt.Errorf("%w: tier is required", ErrInvalidConfig)
 		}
 
-		normalizedTier, err := poolTier(tier)
+		normalizedTier, err := normalizeTier(tier)
 		if err != nil {
 			return fmt.Errorf("normalize tier: %w", err)
 		}
@@ -82,37 +48,42 @@ func Configure(configs map[Tier]Config, tier Tier) error {
 			return fmt.Errorf("validate %s pool config: %w", normalizedTier, err)
 		}
 
-		nextConfigs[normalizedTier] = config
+		nextTierConfigs[normalizedTier] = config
 	}
 
 	for _, tier := range []Tier{TierNormal, TierHot, TierSuper} {
-		if _, found := nextConfigs[tier]; !found {
+		if _, found := nextTierConfigs[tier]; !found {
 			return fmt.Errorf("%w: %s tier config is required", ErrInvalidConfig, tier)
 		}
 	}
 
-	if _, found := nextConfigs[normalizedDefaultTier]; !found {
-		return fmt.Errorf("%w: default tier config is required", ErrInvalidConfig)
-	}
-
-	defaultTier = normalizedDefaultTier
-	defaultConfigs = nextConfigs
+	sharedConfig = shared
+	tierConfigs = nextTierConfigs
+	configured = true
 	return nil
 }
 
-// DefaultTier 설정 파일에서 읽은 기본 공유 풀 티어를 반환합니다.
-func DefaultTier() Tier {
-	return defaultTier
+// SharedConfig 공유풀 설정을 반환합니다.
+func SharedConfig() (Config, error) {
+	if !configured {
+		return Config{}, fmt.Errorf("%w: pool config is not loaded", ErrInvalidConfig)
+	}
+
+	return sharedConfig, nil
 }
 
 // ConfigFor 지정한 티어의 풀 설정을 반환합니다.
 func ConfigFor(tier Tier) (Config, error) {
-	normalizedTier, err := poolTier(tier)
+	if !configured {
+		return Config{}, fmt.Errorf("%w: pool config is not loaded", ErrInvalidConfig)
+	}
+
+	normalizedTier, err := normalizeTier(tier)
 	if err != nil {
 		return Config{}, err
 	}
 
-	config, found := defaultConfigs[normalizedTier]
+	config, found := tierConfigs[normalizedTier]
 	if !found {
 		return Config{}, fmt.Errorf("%w: unsupported tier %q", ErrInvalidConfig, tier)
 	}
@@ -120,10 +91,10 @@ func ConfigFor(tier Tier) (Config, error) {
 	return config, nil
 }
 
-func poolTier(tier Tier) (Tier, error) {
+func normalizeTier(tier Tier) (Tier, error) {
 	normalizedTier, ok := utils.NormalizeEnum(
 		string(tier),
-		string(TierNormal),
+		"",
 		string(TierNormal),
 		string(TierHot),
 		string(TierSuper),

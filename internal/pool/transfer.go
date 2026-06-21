@@ -57,9 +57,15 @@ func makePool(config poolconfig.Config) (*http.Transport, error) {
 	transport.MaxIdleConnsPerHost = config.MaxIdleConnsPerHost
 	transport.MaxConnsPerHost = config.MaxConnsPerHost
 	transport.IdleConnTimeout = config.IdleConnTimeout
-	transport.ResponseHeaderTimeout = config.ResponseHeaderTimeout
-	transport.TLSHandshakeTimeout = config.TLSHandshakeTimeout
-	transport.ExpectContinueTimeout = config.ExpectContinueTimeout
+	if config.ResponseHeaderTimeout != 0 {
+		transport.ResponseHeaderTimeout = config.ResponseHeaderTimeout
+	}
+	if config.TLSHandshakeTimeout != 0 {
+		transport.TLSHandshakeTimeout = config.TLSHandshakeTimeout
+	}
+	if config.ExpectContinueTimeout != 0 {
+		transport.ExpectContinueTimeout = config.ExpectContinueTimeout
+	}
 
 	return transport, nil
 }

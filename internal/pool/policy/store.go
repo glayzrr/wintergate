@@ -169,7 +169,6 @@ func (s *Store) AssignmentFor(snapshot *internalconfig.Snapshot, status traffic.
 
 	decision := Assignment{
 		ServiceName: normalizedServiceName,
-		Tier:        poolconfig.DefaultTier(),
 		Status:      status,
 	}
 	if normalizedServiceName == "" || s == nil {
@@ -209,7 +208,7 @@ func decideTier(status traffic.Status, policy poolInfo) (poolconfig.Tier, bool) 
 		return poolconfig.TierNormal, true
 	}
 
-	return poolconfig.DefaultTier(), false
+	return "", false
 }
 
 func thresholdReached(status traffic.Status, threshold Threshold) bool {

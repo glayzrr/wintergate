@@ -44,6 +44,24 @@ func newManagedClient(tier poolconfig.Tier) (*managedClient, error) {
 	}, nil
 }
 
+func newSharedClient() (*managedClient, error) {
+	config, err := poolconfig.SharedConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	transport, err := makePool(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &managedClient{
+		client: &http.Client{
+			Transport: transport,
+		},
+	}, nil
+}
+
 // closeIdleConnections 교체 대상 client가 더 이상 붙잡을 필요 없는 idle connection을 닫습니다.
 //
 // CloseIdleConnections는 진행 중인 요청의 connection은 닫지 않으므로, retire는 교체 직후와

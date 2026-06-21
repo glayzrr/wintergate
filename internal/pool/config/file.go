@@ -15,15 +15,18 @@ type fileConfig struct {
 }
 
 type filePoolConfig struct {
-	Tier        map[Tier]fileTierConfig `yaml:"tier"`
-	DefaultTier Tier                    `yaml:"default-tier"`
+	Shared *filePoolConfigValue       `yaml:"shared"`
+	Tier   map[Tier]filePoolConfigValue `yaml:"tier"`
 }
 
-type fileTierConfig struct {
-	MaxIdleConns        *int    `yaml:"MaxIdleConns"`
-	MaxIdleConnsPerHost *int    `yaml:"MaxIdleConnsPerHost"`
-	MaxConnsPerHost     *int    `yaml:"MaxConnsPerHost"`
-	IdleConnTimeout     *string `yaml:"IdleConnTimeout"`
+type filePoolConfigValue struct {
+	MaxIdleConns          *int    `yaml:"MaxIdleConns"`
+	MaxIdleConnsPerHost   *int    `yaml:"MaxIdleConnsPerHost"`
+	MaxConnsPerHost       *int    `yaml:"MaxConnsPerHost"`
+	IdleConnTimeout       *string `yaml:"IdleConnTimeout"`
+	ResponseHeaderTimeout *string `yaml:"ResponseHeaderTimeout"`
+	TLSHandshakeTimeout   *string `yaml:"TLSHandshakeTimeout"`
+	ExpectContinueTimeout *string `yaml:"ExpectContinueTimeout"`
 }
 
 // LoadConfig 설정 파일의 pool 설정을 기본 커넥션 풀 설정으로 반영합니다.
@@ -43,21 +46,21 @@ func LoadConfig(path string) error {
 		return fmt.Errorf("decode pool config file: %w", err)
 	}
 
-	poolConfigs, err := config.Pool.configs()
+	sharedConfig, tierConfigs, err := config.Pool.configs()
 	if err != nil {
 		return err
 	}
 
-	if err := Configure(poolConfigs, config.Pool.DefaultTier); err != nil {
+	if err := Configure(sharedConfig, tierConfigs); err != nil {
 		return fmt.Errorf("configure pool: %w", err)
 	}
 
 	slog.Info(
 		logPoolConfigLoaded,
-		logAttrDefaultTier,
-		config.Pool.DefaultTier,
+		logAttrSharedConfig,
+		sharedConfig,
 		logAttrPoolConfigs,
-		poolConfigs,
+		tierConfigs,
 	)
 
 	return nil
@@ -96,30 +99,80 @@ func resolveConfigPath(path string) (string, error) {
 	return "", fmt.Errorf("%w: pool config file %q not found", ErrInvalidConfig, path)
 }
 
-func (c filePoolConfig) configs() (map[Tier]Config, error) {
+func (c filePoolConfig) configs() (Config, map[Tier]Config, error) {
+	if c.Shared == nil {
+		return Config{}, nil, fmt.Errorf("%w: shared pool config is required", ErrInvalidConfig)
+	}
+	if len(c.Tier) == 0 {
+		return Config{}, nil, fmt.Errorf("%w: tier pool configs are required", ErrInvalidConfig)
+	}
+
+	sharedConfig, err := c.Shared.config("shared")
+	if err != nil {
+		return Config{}, nil, err
+	}
+
 	configs := make(map[Tier]Config, len(c.Tier))
 	for tier, fileConfig := range c.Tier {
-		poolConfig := defaultConfigs[tier]
+		poolConfig, err := fileConfig.config(string(tier))
+		if err != nil {
+			return Config{}, nil, err
+		}
 		poolConfig.Tier = tier
-		if fileConfig.MaxIdleConns != nil {
-			poolConfig.MaxIdleConns = *fileConfig.MaxIdleConns
-		}
-		if fileConfig.MaxIdleConnsPerHost != nil {
-			poolConfig.MaxIdleConnsPerHost = *fileConfig.MaxIdleConnsPerHost
-		}
-		if fileConfig.MaxConnsPerHost != nil {
-			poolConfig.MaxConnsPerHost = *fileConfig.MaxConnsPerHost
-		}
-		if fileConfig.IdleConnTimeout != nil {
-			idleConnTimeout, err := time.ParseDuration(*fileConfig.IdleConnTimeout)
-			if err != nil {
-				return nil, fmt.Errorf("parse %s idle connection timeout: %w", tier, err)
-			}
-			poolConfig.IdleConnTimeout = idleConnTimeout
-		}
 
 		configs[tier] = poolConfig
 	}
 
-	return configs, nil
+	return sharedConfig, configs, nil
+}
+
+func (c filePoolConfigValue) config(name string) (Config, error) {
+	if c.MaxIdleConns == nil {
+		return Config{}, fmt.Errorf("%w: %s MaxIdleConns is required", ErrInvalidConfig, name)
+	}
+	if c.MaxIdleConnsPerHost == nil {
+		return Config{}, fmt.Errorf("%w: %s MaxIdleConnsPerHost is required", ErrInvalidConfig, name)
+	}
+	if c.MaxConnsPerHost == nil {
+		return Config{}, fmt.Errorf("%w: %s MaxConnsPerHost is required", ErrInvalidConfig, name)
+	}
+	if c.IdleConnTimeout == nil {
+		return Config{}, fmt.Errorf("%w: %s IdleConnTimeout is required", ErrInvalidConfig, name)
+	}
+
+	idleConnTimeout, err := time.ParseDuration(*c.IdleConnTimeout)
+	if err != nil {
+		return Config{}, fmt.Errorf("parse %s idle connection timeout: %w", name, err)
+	}
+
+	poolConfig := Config{
+		MaxIdleConns:          *c.MaxIdleConns,
+		MaxIdleConnsPerHost:   *c.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       *c.MaxConnsPerHost,
+		IdleConnTimeout:       idleConnTimeout,
+	}
+
+	if c.ResponseHeaderTimeout != nil {
+		responseHeaderTimeout, err := time.ParseDuration(*c.ResponseHeaderTimeout)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse %s response header timeout: %w", name, err)
+		}
+		poolConfig.ResponseHeaderTimeout = responseHeaderTimeout
+	}
+	if c.TLSHandshakeTimeout != nil {
+		tlsHandshakeTimeout, err := time.ParseDuration(*c.TLSHandshakeTimeout)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse %s tls handshake timeout: %w", name, err)
+		}
+		poolConfig.TLSHandshakeTimeout = tlsHandshakeTimeout
+	}
+	if c.ExpectContinueTimeout != nil {
+		expectContinueTimeout, err := time.ParseDuration(*c.ExpectContinueTimeout)
+		if err != nil {
+			return Config{}, fmt.Errorf("parse %s expect continue timeout: %w", name, err)
+		}
+		poolConfig.ExpectContinueTimeout = expectContinueTimeout
+	}
+
+	return poolConfig, nil
 }

@@ -3,6 +3,6 @@ package config
 const (
 	logPoolConfigLoaded = "pool config loaded"
 
-	logAttrDefaultTier = "default_tier"
-	logAttrPoolConfigs = "pool_configs"
+	logAttrSharedConfig = "shared_config"
+	logAttrPoolConfigs  = "pool_configs"
 )

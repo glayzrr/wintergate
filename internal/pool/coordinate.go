@@ -13,7 +13,7 @@ import (
 
 // Coordinator 공유 pool과 서비스별 전용 pool의 client 생명주기를 관리합니다.
 type Coordinator struct {
-	shared    map[poolconfig.Tier]*managedClient
+	shared    *managedClient
 	dedicated map[string]*managedClient
 
 	// shared/dedicated http.Client 캐시의 동시 조회와 교체를 보호합니다.
@@ -34,21 +34,15 @@ type ClientProvider interface {
 
 // NewCoordinator 현재 pool 설정으로 Coordinator를 생성합니다.
 func NewCoordinator() *Coordinator {
-	store := &Coordinator{
-		shared:    make(map[poolconfig.Tier]*managedClient, 3),
+	sharedClient, err := newSharedClient()
+	if err != nil {
+		panic(err)
+	}
+
+	return &Coordinator{
+		shared:    sharedClient,
 		dedicated: make(map[string]*managedClient),
 	}
-
-	for _, tier := range []poolconfig.Tier{poolconfig.TierNormal, poolconfig.TierHot, poolconfig.TierSuper} {
-		client, err := newManagedClient(tier)
-		if err != nil {
-			panic(err)
-		}
-
-		store.shared[tier] = client
-	}
-
-	return store
 }
 
 // Acquire 요청별 pool 결정 결과에 맞는 http.Client lease를 반환합니다.
@@ -65,15 +59,15 @@ func (p *Coordinator) Acquire(assignment policy.Assignment) (ClientLease, error)
 }
 
 func (p *Coordinator) clientFor(assignment policy.Assignment) (*managedClient, error) {
+	if !assignment.Dedicated {
+		return p.sharedClient(assignment)
+	}
+
 	config, err := poolconfig.ConfigFor(assignment.Tier)
 	if err != nil {
 		return nil, err
 	}
 	assignment.Tier = config.Tier
-
-	if !assignment.Dedicated {
-		return p.sharedClient(assignment)
-	}
 
 	return p.dedicatedClient(assignment)
 }
@@ -83,7 +77,7 @@ func (p *Coordinator) sharedClient(assignment policy.Assignment) (*managedClient
 
 	// 전용 client가 없는 서비스는 read lock만으로 shared client를 바로 반환합니다.
 	p.mu.RLock()
-	cached := p.shared[assignment.Tier]
+	cached := p.shared
 	_, hasDedicated := p.dedicated[configKey]
 	if cached != nil && (!hasDedicated || configKey == "") {
 		cached.acquire()
@@ -104,15 +98,15 @@ func (p *Coordinator) sharedClient(assignment policy.Assignment) (*managedClient
 		}
 	}
 
-	// shared client는 normal/hot/super tier별로 하나씩 유지합니다.
-	cached = p.shared[assignment.Tier]
+	// shared client는 전체 서비스가 함께 쓰는 단일 풀입니다.
+	cached = p.shared
 	if cached == nil {
 		var err error
-		cached, err = newManagedClient(assignment.Tier)
+		cached, err = newSharedClient()
 		if err != nil {
 			return nil, err
 		}
-		p.shared[assignment.Tier] = cached
+		p.shared = cached
 	}
 
 	cached.acquire()
@@ -181,7 +175,12 @@ func (p *Coordinator) count() (int, int) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	return len(p.shared), len(p.dedicated)
+	sharedCount := 0
+	if p.shared != nil {
+		sharedCount = 1
+	}
+
+	return sharedCount, len(p.dedicated)
 }
 
 func (p *Coordinator) dedicatedTier(configKey string) (poolconfig.Tier, bool) {
@@ -194,16 +193,4 @@ func (p *Coordinator) dedicatedTier(configKey string) (poolconfig.Tier, bool) {
 	}
 
 	return cached.tier, true
-}
-
-func (p *Coordinator) sharedClientForTier(tier poolconfig.Tier) (*http.Client, bool) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	cached := p.shared[tier]
-	if cached == nil {
-		return nil, false
-	}
-
-	return cached.client, true
 }

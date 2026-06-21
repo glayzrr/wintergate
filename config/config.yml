@@ -1,4 +1,10 @@
 pool:
+  shared:
+    MaxIdleConns: 1024
+    MaxIdleConnsPerHost: 512
+    MaxConnsPerHost: 1024
+    IdleConnTimeout: 90s
+
   tier:
     normal:
       MaxIdleConns: 1024
@@ -15,5 +21,3 @@ pool:
       MaxIdleConnsPerHost: 2048
       MaxConnsPerHost: 4096
       IdleConnTimeout: 360s
-
-  default-tier: super
