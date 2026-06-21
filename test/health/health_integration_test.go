@@ -11,7 +11,7 @@ import (
 	authconfig "wintergate/internal/auth/config"
 	internalconfig "wintergate/internal/config"
 	internalhealth "wintergate/internal/health"
-	"wintergate/internal/pool"
+	"wintergate/internal/pool/policy"
 	routeconfig "wintergate/internal/route/config"
 	"wintergate/test/harness"
 )
@@ -290,7 +290,7 @@ func newHealthRuntime(t *testing.T) *healthRuntime {
 	healthStore := internalhealth.NewStore()
 	healthManager := internalhealth.NewManager(healthStore)
 	loadBalancer := routeconfig.NewLoadBalancer(healthStore)
-	poolStore := pool.NewStore()
+	poolStore := policy.NewStore()
 
 	manager.AddValidator(routeconfig.NewValidator())
 	manager.AddValidator(authStore)

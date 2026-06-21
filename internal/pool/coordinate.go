@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"sync"
 
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/policy"
 	"wintergate/internal/utils"
 )
 
 // Coordinator 공유 pool과 서비스별 전용 pool의 client 생명주기를 관리합니다.
 type Coordinator struct {
-	shared    map[Tier]*managedClient
+	shared    map[poolconfig.Tier]*managedClient
 	dedicated map[string]*managedClient
 
 	// shared/dedicated http.Client 캐시의 동시 조회와 교체를 보호합니다.
@@ -27,17 +29,17 @@ type ClientLease struct {
 // ClientProvider 요청별 pool 결정 결과에 맞는 http.Client를 대여합니다.
 // 주입 구현체: NewForwarder에 *Coordinator가 들어옵니다.
 type ClientProvider interface {
-	Acquire(Assignment) (ClientLease, error)
+	Acquire(policy.Assignment) (ClientLease, error)
 }
 
 // NewCoordinator 현재 pool 설정으로 Coordinator를 생성합니다.
 func NewCoordinator() *Coordinator {
 	store := &Coordinator{
-		shared:    make(map[Tier]*managedClient, 3),
+		shared:    make(map[poolconfig.Tier]*managedClient, 3),
 		dedicated: make(map[string]*managedClient),
 	}
 
-	for _, tier := range []Tier{TierNormal, TierHot, TierSuper} {
+	for _, tier := range []poolconfig.Tier{poolconfig.TierNormal, poolconfig.TierHot, poolconfig.TierSuper} {
 		client, err := newManagedClient(tier)
 		if err != nil {
 			panic(err)
@@ -50,7 +52,7 @@ func NewCoordinator() *Coordinator {
 }
 
 // Acquire 요청별 pool 결정 결과에 맞는 http.Client lease를 반환합니다.
-func (p *Coordinator) Acquire(assignment Assignment) (ClientLease, error) {
+func (p *Coordinator) Acquire(assignment policy.Assignment) (ClientLease, error) {
 	client, err := p.clientFor(assignment)
 	if err != nil {
 		return ClientLease{}, err
@@ -62,12 +64,12 @@ func (p *Coordinator) Acquire(assignment Assignment) (ClientLease, error) {
 	}, nil
 }
 
-func (p *Coordinator) clientFor(assignment Assignment) (*managedClient, error) {
-	normalizedTier, err := poolTier(assignment.Tier)
+func (p *Coordinator) clientFor(assignment policy.Assignment) (*managedClient, error) {
+	config, err := poolconfig.ConfigFor(assignment.Tier)
 	if err != nil {
 		return nil, err
 	}
-	assignment.Tier = normalizedTier
+	assignment.Tier = config.Tier
 
 	if !assignment.Dedicated {
 		return p.sharedClient(assignment)
@@ -76,7 +78,7 @@ func (p *Coordinator) clientFor(assignment Assignment) (*managedClient, error) {
 	return p.dedicatedClient(assignment)
 }
 
-func (p *Coordinator) sharedClient(assignment Assignment) (*managedClient, error) {
+func (p *Coordinator) sharedClient(assignment policy.Assignment) (*managedClient, error) {
 	configKey := utils.NormalizeServiceName(assignment.ServiceName)
 
 	// 전용 client가 없는 서비스는 read lock만으로 shared client를 바로 반환합니다.
@@ -117,7 +119,7 @@ func (p *Coordinator) sharedClient(assignment Assignment) (*managedClient, error
 	return cached, nil
 }
 
-func (p *Coordinator) dedicatedClient(assignment Assignment) (*managedClient, error) {
+func (p *Coordinator) dedicatedClient(assignment policy.Assignment) (*managedClient, error) {
 	configKey := utils.NormalizeServiceName(assignment.ServiceName)
 	if configKey == "" {
 		return nil, fmt.Errorf("%w: config key is required for dedicated pool", ErrInvalidConfigKey)
@@ -182,7 +184,7 @@ func (p *Coordinator) count() (int, int) {
 	return len(p.shared), len(p.dedicated)
 }
 
-func (p *Coordinator) dedicatedTier(configKey string) (Tier, bool) {
+func (p *Coordinator) dedicatedTier(configKey string) (poolconfig.Tier, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -194,7 +196,7 @@ func (p *Coordinator) dedicatedTier(configKey string) (Tier, bool) {
 	return cached.tier, true
 }
 
-func (p *Coordinator) sharedClientForTier(tier Tier) (*http.Client, bool) {
+func (p *Coordinator) sharedClientForTier(tier poolconfig.Tier) (*http.Client, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 

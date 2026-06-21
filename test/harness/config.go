@@ -7,7 +7,7 @@ import (
 
 	authconfig "wintergate/internal/auth/config"
 	internalconfig "wintergate/internal/config"
-	"wintergate/internal/pool"
+	"wintergate/internal/pool/policy"
 	routeconfig "wintergate/internal/route/config"
 )
 
@@ -17,7 +17,7 @@ type Runtime struct {
 	AuthStore    *authconfig.Store
 	Router       *routeconfig.Router
 	LoadBalancer *routeconfig.LoadBalancer
-	PoolStore    *pool.Store
+	PoolStore    *policy.Store
 }
 
 // ServiceOption 테스트 서비스 설정을 조정합니다.
@@ -29,7 +29,7 @@ func NewRuntime() *Runtime {
 	authStore := authconfig.NewStore()
 	router := routeconfig.NewRouter()
 	loadBalancer := routeconfig.NewLoadBalancer()
-	poolStore := pool.NewStore()
+	poolStore := policy.NewStore()
 
 	manager.AddValidator(routeconfig.NewValidator())
 	manager.AddValidator(authStore)

@@ -14,6 +14,9 @@ import (
 	internalmetric "wintergate/internal/metric"
 	metricrecord "wintergate/internal/metric/record"
 	"wintergate/internal/pool"
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/policy"
+	"wintergate/internal/pool/traffic"
 	routeconfig "wintergate/internal/route/config"
 	internaltrace "wintergate/internal/trace"
 
@@ -34,7 +37,7 @@ func main() {
 }
 
 func run() error {
-	if err := pool.LoadConfig(defaultPoolConfigPath); err != nil {
+	if err := poolconfig.LoadConfig(defaultPoolConfigPath); err != nil {
 		return fmt.Errorf("load pool config: %w", err)
 	}
 
@@ -60,7 +63,7 @@ func newRouter() (*gin.Engine, error) {
 	healthManager := internalhealth.NewManager(healthStore)
 	routeRouter := routeconfig.NewRouter()
 	routeLoadBalancer := routeconfig.NewLoadBalancer(healthStore)
-	poolStore := pool.NewStore()
+	poolStore := policy.NewStore()
 
 	manager.AddValidator(routeconfig.NewValidator())
 	manager.AddValidator(authStore)
@@ -77,7 +80,7 @@ func newRouter() (*gin.Engine, error) {
 	metricRecorder := metricrecord.NewRecorder(metricRegistry)
 	poolCoordinator := pool.NewCoordinator()
 	poolForwarder := pool.NewForwarder(poolCoordinator, metricRecorder)
-	trafficRecorder := pool.NewRecorder()
+	trafficRecorder := traffic.NewRecorder()
 	metricObserver, err := internalmetric.BuildRequestObserver(metricRecorder)
 	if err != nil {
 		return nil, fmt.Errorf("create metric observer: %w", err)

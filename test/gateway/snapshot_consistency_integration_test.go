@@ -16,6 +16,9 @@ import (
 	internalconfig "wintergate/internal/config"
 	internalgateway "wintergate/internal/gateway"
 	"wintergate/internal/pool"
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/policy"
+	"wintergate/internal/pool/traffic"
 	routeconfig "wintergate/internal/route/config"
 )
 
@@ -137,7 +140,7 @@ func TestGatewayTransferUsesCapturedSnapshotAfterConfigCommit(t *testing.T) {
 		},
 	))
 	forwarder := &recordingForwarder{}
-	recorder := pool.NewRecorder()
+	recorder := traffic.NewRecorder()
 	orchestrator := internalgateway.NewOrchestrator(
 		internalgateway.NewRouteTask(manager, routeconfig.NewRouter(), routeconfig.NewLoadBalancer()),
 		taskFunc(func(_ context.Context, state *internalgateway.State) error {
@@ -177,20 +180,20 @@ func TestGatewayTransferUsesCapturedSnapshotAfterConfigCommit(t *testing.T) {
 	if !forwarder.assignment.Dedicated {
 		t.Fatal("assignment is shared, want dedicated from old threshold")
 	}
-	if forwarder.assignment.Tier != pool.TierHot {
-		t.Fatalf("assignment tier = %q, want %q", forwarder.assignment.Tier, pool.TierHot)
+	if forwarder.assignment.Tier != poolconfig.TierHot {
+		t.Fatalf("assignment tier = %q, want %q", forwarder.assignment.Tier, poolconfig.TierHot)
 	}
 	if manager.Settings().Revision != 2 {
 		t.Fatalf("manager revision = %d, want 2", manager.Settings().Revision)
 	}
 }
 
-func newSnapshotRuntime(t *testing.T, settings internalconfig.Settings) (*internalconfig.Manager, *authconfig.Store, *pool.Store) {
+func newSnapshotRuntime(t *testing.T, settings internalconfig.Settings) (*internalconfig.Manager, *authconfig.Store, *policy.Store) {
 	t.Helper()
 
 	manager := internalconfig.NewManager()
 	authStore := authconfig.NewStore()
-	poolStore := pool.NewStore()
+	poolStore := policy.NewStore()
 	manager.AddValidator(routeconfig.NewValidator())
 	manager.AddValidator(authStore)
 	manager.AddValidator(poolStore)
@@ -283,7 +286,7 @@ func (f taskFunc) Run(ctx context.Context, state *internalgateway.State) error {
 
 type recordingForwarder struct {
 	address    string
-	assignment pool.Assignment
+	assignment policy.Assignment
 }
 
 func (f *recordingForwarder) Handle(request pool.ForwardRequest) error {

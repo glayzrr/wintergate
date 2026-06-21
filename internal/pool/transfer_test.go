@@ -12,11 +12,14 @@ import (
 	"testing"
 	"time"
 
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/policy"
+	"wintergate/internal/pool/traffic"
 	"wintergate/internal/utils"
 )
 
 func TestNewTransportAppliesTierConfig(t *testing.T) {
-	transport, err := NewTransport(TierSuper)
+	transport, err := NewTransport(poolconfig.TierSuper)
 	if err != nil {
 		t.Fatalf("NewTransport returned error: %v", err)
 	}
@@ -105,9 +108,9 @@ func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
 		Address: upstream.URL,
 		Writer:  recorder,
 		Request: request,
-		Assignment: Assignment{
+		Assignment: policy.Assignment{
 			ServiceName: "order-service",
-			Tier:        TierNormal,
+			Tier:        poolconfig.TierNormal,
 		},
 	}); err != nil {
 		t.Fatalf("HandleRequest returned error: %v", err)
@@ -209,9 +212,9 @@ func TestHandleRequestUsesReverseProxyForWebSocket(t *testing.T) {
 			Address: upstream.URL,
 			Writer:  w,
 			Request: r,
-			Assignment: Assignment{
+			Assignment: policy.Assignment{
 				ServiceName: "order-service",
-				Tier:        TierNormal,
+				Tier:        poolconfig.TierNormal,
 			},
 		})
 		if err != nil {
@@ -258,17 +261,17 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 
 	coordinator := NewCoordinator()
 	forwarder := NewForwarder(coordinator, nil)
-	trafficRecorder := NewRecorder()
-	errCh := handleRequestAsync(t, trafficRecorder, forwarder, "order-service", upstream.URL, Assignment{
+	trafficRecorder := traffic.NewRecorder()
+	errCh := handleRequestAsync(t, trafficRecorder, forwarder, "order-service", upstream.URL, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 		Dedicated:   true,
 	}, 200*time.Millisecond)
 	waitForSignal(t, upstreamStarted, "first upstream request")
 
 	hotClient := dedicatedCachedClient(t, coordinator, "order-service")
-	if hotClient.tier != TierHot {
-		t.Fatalf("dedicated tier = %q, want %q", hotClient.tier, TierHot)
+	if hotClient.tier != poolconfig.TierHot {
+		t.Fatalf("dedicated tier = %q, want %q", hotClient.tier, poolconfig.TierHot)
 	}
 	hotClientDone := waitCachedClient(hotClient)
 
@@ -300,9 +303,9 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 		t.Fatalf("dedicatedCount = %d, want %d", dedicatedCount, 0)
 	}
 
-	decision := Assignment{
+	decision := policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierNormal,
+		Tier:        poolconfig.TierNormal,
 	}
 
 	firstClient := mustClient(t, store, decision)
@@ -316,13 +319,13 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 func TestClientStoreUsesSharedTierClients(t *testing.T) {
 	store := NewCoordinator()
 
-	normalClient := mustClient(t, store, Assignment{
+	normalClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierNormal,
+		Tier:        poolconfig.TierNormal,
 	})
-	hotClient := mustClient(t, store, Assignment{
+	hotClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "payment-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 	})
 
 	if normalClient == hotClient {
@@ -336,14 +339,14 @@ func TestClientStoreUsesSharedTierClients(t *testing.T) {
 func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 	store := NewCoordinator()
 
-	orderClient := mustClient(t, store, Assignment{
+	orderClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 		Dedicated:   true,
 	})
-	paymentClient := mustClient(t, store, Assignment{
+	paymentClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "payment-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 		Dedicated:   true,
 	})
 
@@ -359,22 +362,22 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 	store := NewCoordinator()
 
-	hotClient := mustClient(t, store, Assignment{
+	hotClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 		Dedicated:   true,
 	})
-	superClient := mustClient(t, store, Assignment{
+	superClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierSuper,
+		Tier:        poolconfig.TierSuper,
 		Dedicated:   true,
 	})
 
 	if hotClient == superClient {
 		t.Fatal("client store reused dedicated client after tier changed")
 	}
-	if tier, found := store.dedicatedTier("order-service"); !found || tier != TierSuper {
-		t.Fatalf("dedicated tier = (%q, %t), want (%q, %t)", tier, found, TierSuper, true)
+	if tier, found := store.dedicatedTier("order-service"); !found || tier != poolconfig.TierSuper {
+		t.Fatalf("dedicated tier = (%q, %t), want (%q, %t)", tier, found, poolconfig.TierSuper, true)
 	}
 	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 1 {
 		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 1)
@@ -384,19 +387,19 @@ func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	store := NewCoordinator()
 
-	dedicatedClient := mustClient(t, store, Assignment{
+	dedicatedClient := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 		Dedicated:   true,
 	})
-	sharedHotClient, found := store.sharedClientForTier(TierHot)
+	sharedHotClient, found := store.sharedClientForTier(poolconfig.TierHot)
 	if !found {
 		t.Fatal("shared hot client not found")
 	}
 
-	client := mustClient(t, store, Assignment{
+	client := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
-		Tier:        TierHot,
+		Tier:        poolconfig.TierHot,
 	})
 
 	if client.client != sharedHotClient {
@@ -413,7 +416,7 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	}
 }
 
-func handleRequestAsync(t *testing.T, trafficRecorder *Recorder, forwarder *Forwarder, service, host string, decision Assignment, timeout time.Duration) <-chan error {
+func handleRequestAsync(t *testing.T, trafficRecorder *traffic.Recorder, forwarder *Forwarder, service, host string, decision policy.Assignment, timeout time.Duration) <-chan error {
 	t.Helper()
 
 	errCh := make(chan error, 1)
@@ -438,7 +441,7 @@ func handleRequestAsync(t *testing.T, trafficRecorder *Recorder, forwarder *Forw
 	return errCh
 }
 
-func sharedCachedClient(t *testing.T, store *Coordinator, tier Tier) *managedClient {
+func sharedCachedClient(t *testing.T, store *Coordinator, tier poolconfig.Tier) *managedClient {
 	t.Helper()
 
 	store.mu.RLock()
@@ -526,7 +529,7 @@ func waitForRequestError(t *testing.T, errCh <-chan error) error {
 	return nil
 }
 
-func mustClient(t *testing.T, store *Coordinator, decision Assignment) *managedClient {
+func mustClient(t *testing.T, store *Coordinator, decision policy.Assignment) *managedClient {
 	t.Helper()
 
 	client, err := store.clientFor(decision)

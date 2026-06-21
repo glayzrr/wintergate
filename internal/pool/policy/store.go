@@ -1,9 +1,11 @@
-package pool
+package policy
 
 import (
 	"fmt"
 
-	"wintergate/internal/config"
+	internalconfig "wintergate/internal/config"
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/traffic"
 	"wintergate/internal/utils"
 )
 
@@ -24,9 +26,9 @@ type poolInfo struct {
 // Assignment 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
 type Assignment struct {
 	ServiceName string
-	Tier        Tier
+	Tier        poolconfig.Tier
 	Dedicated   bool
-	Status      Status
+	Status      traffic.Status
 }
 
 // Store snapshot의 threshold 설정으로 pool assignment를 계산합니다.
@@ -38,7 +40,7 @@ func NewStore() *Store {
 }
 
 // Validate 후보 스냅샷의 전체 풀 정책이 반영 가능한지 검증합니다.
-func (s *Store) Validate(candidate config.Snapshot) error {
+func (s *Store) Validate(candidate internalconfig.Snapshot) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidPolicy)
 	}
@@ -82,7 +84,7 @@ func (s *Store) Validate(candidate config.Snapshot) error {
 }
 
 // Apply 중앙 snapshot 전환 이후 threshold를 내부 저장소에 복제하지 않습니다.
-func (s *Store) Apply(settings config.Settings) error {
+func (s *Store) Apply(settings internalconfig.Settings) error {
 	if s == nil {
 		return fmt.Errorf("%w: store is nil", ErrInvalidPolicy)
 	}
@@ -129,8 +131,7 @@ func (s *Store) Apply(settings config.Settings) error {
 func (s *Store) Delete(serviceName string) {
 }
 
-// PolicyFor 서비스 이름별 등록 정책의 사본을 반환합니다.
-func (s *Store) PolicyFor(snapshot *config.Snapshot, serviceName string) (poolInfo, bool) {
+func (s *Store) policyFor(snapshot *internalconfig.Snapshot, serviceName string) (poolInfo, bool) {
 	if s == nil || snapshot == nil {
 		return poolInfo{}, false
 	}
@@ -163,12 +164,12 @@ func (s *Store) PolicyFor(snapshot *config.Snapshot, serviceName string) (poolIn
 }
 
 // AssignmentFor 등록 정책이 있으면 RPS/in-flight 기준으로 tier를 결정합니다.
-func (s *Store) AssignmentFor(snapshot *config.Snapshot, status Status) Assignment {
+func (s *Store) AssignmentFor(snapshot *internalconfig.Snapshot, status traffic.Status) Assignment {
 	normalizedServiceName := utils.NormalizeServiceName(status.ConfigKey)
 
 	decision := Assignment{
 		ServiceName: normalizedServiceName,
-		Tier:        DefaultTier(),
+		Tier:        poolconfig.DefaultTier(),
 		Status:      status,
 	}
 	if normalizedServiceName == "" || s == nil {
@@ -176,7 +177,7 @@ func (s *Store) AssignmentFor(snapshot *config.Snapshot, status Status) Assignme
 	}
 
 	// 등록된 정책이 없으면 기본 정책을 반환합니다.
-	policy, found := s.PolicyFor(snapshot, normalizedServiceName)
+	policy, found := s.policyFor(snapshot, normalizedServiceName)
 	if !found {
 		return decision
 	}
@@ -197,21 +198,21 @@ func validateThreshold(threshold Threshold, name string) error {
 	return nil
 }
 
-func decideTier(status Status, policy poolInfo) (Tier, bool) {
+func decideTier(status traffic.Status, policy poolInfo) (poolconfig.Tier, bool) {
 	if thresholdReached(status, policy.Super) {
-		return TierSuper, true
+		return poolconfig.TierSuper, true
 	}
 	if thresholdReached(status, policy.Hot) {
-		return TierHot, true
+		return poolconfig.TierHot, true
 	}
 	if thresholdReached(status, policy.Normal) {
-		return TierNormal, true
+		return poolconfig.TierNormal, true
 	}
 
-	return DefaultTier(), false
+	return poolconfig.DefaultTier(), false
 }
 
-func thresholdReached(status Status, threshold Threshold) bool {
+func thresholdReached(status traffic.Status, threshold Threshold) bool {
 	if threshold.RPS > 0 && status.RPS >= threshold.RPS {
 		return true
 	}

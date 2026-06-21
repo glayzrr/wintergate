@@ -3,6 +3,8 @@ package pool
 import (
 	"net/http"
 	"sync"
+
+	poolconfig "wintergate/internal/pool/config"
 )
 
 // managedClient 풀 교체 중에도 이미 선택된 http.Client의 요청 생명주기를 추적합니다.
@@ -12,7 +14,7 @@ import (
 // wg는 그 요청들이 모두 끝난 뒤 교체된 transport의 idle connection을 정리하기 위해
 // 사용합니다.
 type managedClient struct {
-	tier   Tier
+	tier   poolconfig.Tier
 	client *http.Client
 
 	// 커넥션 풀 교체시 미완료된 요청을 기다리기 위해 사용됩니다.
@@ -23,14 +25,19 @@ type managedClient struct {
 //
 // http.Transport의 pool 설정은 요청 처리 중 바꾸지 않고, tier 변경 시 새 client를 만들어
 // 이후 요청만 새 pool을 사용하게 합니다.
-func newManagedClient(tier Tier) (*managedClient, error) {
+func newManagedClient(tier poolconfig.Tier) (*managedClient, error) {
 	transport, err := NewTransport(tier)
 	if err != nil {
 		return nil, err
 	}
 
+	config, err := poolconfig.ConfigFor(tier)
+	if err != nil {
+		return nil, err
+	}
+
 	return &managedClient{
-		tier: tier,
+		tier: config.Tier,
 		client: &http.Client{
 			Transport: transport,
 		},

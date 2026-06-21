@@ -9,12 +9,14 @@ import (
 
 	internalconfig "wintergate/internal/config"
 	"wintergate/internal/pool"
+	"wintergate/internal/pool/policy"
+	"wintergate/internal/pool/traffic"
 )
 
 // PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다.
-// 주입 구현체: NewTransferTask에 *pool.Store가 들어옵니다.
+// 주입 구현체: NewTransferTask에 *policy.Store가 들어옵니다.
 type PoolProvider interface {
-	AssignmentFor(snapshot *internalconfig.Snapshot, status pool.Status) pool.Assignment
+	AssignmentFor(snapshot *internalconfig.Snapshot, status traffic.Status) policy.Assignment
 }
 
 // PoolForwarder 선택된 pool 할당 결과로 업스트림 요청을 전달합니다.
@@ -24,10 +26,10 @@ type PoolForwarder interface {
 }
 
 // TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다.
-// 주입 구현체: NewTransferTask에 *pool.Recorder가 들어옵니다.
+// 주입 구현체: NewTransferTask에 *traffic.Recorder가 들어옵니다.
 type TrafficRecorder interface {
-	Start(configKey string) pool.DoneFunc
-	StatusFor(configKey string) (pool.Status, error)
+	Start(configKey string) traffic.DoneFunc
+	StatusFor(configKey string) (traffic.Status, error)
 }
 
 // TransferTask 인증과 인가를 통과한 요청을 업스트림 서비스로 전달합니다.

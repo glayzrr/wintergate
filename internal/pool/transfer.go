@@ -10,6 +10,8 @@ import (
 	"time"
 
 	metricrecord "wintergate/internal/metric/record"
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/policy"
 )
 
 // Forwarder 결정된 pool client를 사용해 HTTP 요청을 업스트림으로 전달합니다.
@@ -23,7 +25,7 @@ type ForwardRequest struct {
 	Address    string
 	Writer     http.ResponseWriter
 	Request    *http.Request
-	Assignment Assignment
+	Assignment policy.Assignment
 }
 
 // NewForwarder pool client provider와 metric recorder를 사용하는 Forwarder를 생성합니다.
@@ -35,8 +37,8 @@ func NewForwarder(clients ClientProvider, recorder *metricrecord.Recorder) *Forw
 }
 
 // NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
-func NewTransport(tier Tier) (*http.Transport, error) {
-	config, err := ConfigFor(tier)
+func NewTransport(tier poolconfig.Tier) (*http.Transport, error) {
+	config, err := poolconfig.ConfigFor(tier)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +46,7 @@ func NewTransport(tier Tier) (*http.Transport, error) {
 	return makePool(config)
 }
 
-func makePool(config Config) (*http.Transport, error) {
+func makePool(config poolconfig.Config) (*http.Transport, error) {
 	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, fmt.Errorf("%w: default transport is not *http.Transport", ErrInvalidConfig)
