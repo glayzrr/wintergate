@@ -9,7 +9,7 @@ import (
 	"time"
 
 	internalconfig "wintergate/internal/config"
-	internalpool "wintergate/internal/pool"
+	"wintergate/internal/pool/traffic"
 	"wintergate/test/harness"
 )
 
@@ -33,8 +33,8 @@ func TestDedicatedPoolReplacementWaitsForInFlightRequestBeforeClosingOldConnecti
 		),
 	))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	firstResult := receiveAsync(t, orchestrator, http.MethodGet, "/orders")
 	firstRemoteAddress := waitForString(t, upstream.firstStarted, "first upstream request")
@@ -86,8 +86,8 @@ func TestDedicatedPoolReplacementWaitsForContextTimeoutBeforeClosingOldConnectio
 		),
 	))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	firstRequest := httptest.NewRequest(http.MethodGet, "/orders", nil)
 	firstContext, cancel := context.WithTimeout(firstRequest.Context(), 200*time.Millisecond)

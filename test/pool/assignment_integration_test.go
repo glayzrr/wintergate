@@ -6,6 +6,8 @@ import (
 
 	internalconfig "wintergate/internal/config"
 	internalpool "wintergate/internal/pool"
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/traffic"
 	"wintergate/test/harness"
 )
 
@@ -31,8 +33,9 @@ func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing
 		),
 	))
 
+	configurePoolRuntime(t)
 	coordinator := internalpool.NewCoordinator()
-	trafficRecorder := internalpool.NewRecorder()
+	trafficRecorder := traffic.NewRecorder()
 
 	firstDone := trafficRecorder.Start("order-service")
 	firstStatus, err := trafficRecorder.StatusFor("order-service")
@@ -59,8 +62,8 @@ func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing
 	if !secondAssignment.Dedicated {
 		t.Fatal("second assignment is shared, want dedicated at threshold")
 	}
-	if secondAssignment.Tier != internalpool.TierHot {
-		t.Fatalf("second assignment tier = %q, want %q", secondAssignment.Tier, internalpool.TierHot)
+	if secondAssignment.Tier != poolconfig.TierHot {
+		t.Fatalf("second assignment tier = %q, want %q", secondAssignment.Tier, poolconfig.TierHot)
 	}
 
 	secondLease, err := coordinator.Acquire(secondAssignment)

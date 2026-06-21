@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	internalconfig "wintergate/internal/config"
-	internalpool "wintergate/internal/pool"
+	"wintergate/internal/pool/traffic"
 	"wintergate/test/harness"
 )
 
@@ -19,8 +19,8 @@ func TestTrafficRecorderRecordsGatewayRequestLifecycle(t *testing.T) {
 	runtime := harness.NewRuntime()
 	runtime.Register(t, serviceSettingsForEndpoint(t, "order-service", upstream.URL(), "/orders"))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	resultCh := receiveAsync(t, orchestrator, http.MethodGet, "/orders")
 	waitForSignal(t, upstream.started, "upstream request")
@@ -80,8 +80,8 @@ func TestTrafficRecorderAggregatesConcurrentGatewayRequests(t *testing.T) {
 	runtime := harness.NewRuntime()
 	runtime.Register(t, serviceSettingsForEndpoint(t, "order-service", upstream.URL(), "/orders"))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	resultChs := make([]<-chan receiveResult, 0, requestCount)
 	for range requestCount {
@@ -134,8 +134,8 @@ func TestTrafficRecorderFinishesRequestWhenUpstreamFails(t *testing.T) {
 	runtime := harness.NewRuntime()
 	runtime.Register(t, serviceSettingsForEndpoint(t, "order-service", upstreamURL, "/orders"))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	result := receive(t, orchestrator, http.MethodGet, "/orders")
 	if result.err == nil {
@@ -171,8 +171,8 @@ func TestTrafficRecorderSeparatesGatewayServices(t *testing.T) {
 	runtime.Register(t, serviceSettingsForEndpoint(t, "order-service", orderUpstream.URL(), "/orders"))
 	runtime.Register(t, serviceSettingsForEndpoint(t, "payment-service", paymentUpstream.URL, "/payments"))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	orderResultCh := receiveAsync(t, orchestrator, http.MethodGet, "/orders")
 	waitForSignal(t, orderUpstream.started, "order upstream request")

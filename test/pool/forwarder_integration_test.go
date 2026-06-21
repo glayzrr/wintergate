@@ -10,6 +10,8 @@ import (
 
 	internalconfig "wintergate/internal/config"
 	internalpool "wintergate/internal/pool"
+	poolconfig "wintergate/internal/pool/config"
+	"wintergate/internal/pool/traffic"
 	"wintergate/test/harness"
 )
 
@@ -33,8 +35,8 @@ func TestRegisteredPoolRuntimeForwardsRequestsAndChangesAssignment(t *testing.T)
 		),
 	))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	firstResult := receiveAsync(t, orchestrator, http.MethodGet, "/orders")
 	waitForSignal(t, upstream.firstStarted, "first upstream request")
@@ -65,8 +67,8 @@ func TestRegisteredPoolRuntimeForwardsRequestsAndChangesAssignment(t *testing.T)
 	if !secondAssignment.Dedicated {
 		t.Fatal("second assignment is shared, want dedicated at threshold")
 	}
-	if secondAssignment.Tier != internalpool.TierHot {
-		t.Fatalf("second assignment tier = %q, want %q", secondAssignment.Tier, internalpool.TierHot)
+	if secondAssignment.Tier != poolconfig.TierHot {
+		t.Fatalf("second assignment tier = %q, want %q", secondAssignment.Tier, poolconfig.TierHot)
 	}
 
 	upstream.releaseSecond()
@@ -149,8 +151,8 @@ func TestRegisteredPoolRuntimeForwardsRequestThroughConfiguredInstance(t *testin
 		},
 	))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 	request := httptest.NewRequest(http.MethodPost, "/orders?page=1", strings.NewReader(`{"id":1}`))
 	request.Header.Set("X-Request-ID", "request-1")
 

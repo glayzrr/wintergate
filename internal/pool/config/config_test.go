@@ -8,21 +8,21 @@ import (
 	"time"
 )
 
-func TestConfigForTierReturnsNormalWhenTierBlank(t *testing.T) {
-	config, err := ConfigFor("")
-	if err != nil {
-		t.Fatalf("ConfigFor returned error: %v", err)
-	}
+func TestConfigForTierReturnsErrorWhenTierBlank(t *testing.T) {
+	configureTestConfig(t)
 
-	if config.Tier != TierNormal {
-		t.Fatalf("config.Tier = %q, want %q", config.Tier, TierNormal)
+	_, err := ConfigFor("")
+	if err == nil {
+		t.Fatal("ConfigFor returned nil error")
 	}
-	if config.MaxIdleConns != 1024 {
-		t.Fatalf("config.MaxIdleConns = %d, want %d", config.MaxIdleConns, 1024)
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 }
 
 func TestConfigForTierReturnsTierConfig(t *testing.T) {
+	configureTestConfig(t)
+
 	tests := []struct {
 		name                string
 		tier                Tier
@@ -77,6 +77,8 @@ func TestConfigForTierReturnsTierConfig(t *testing.T) {
 }
 
 func TestConfigForTierNormalizesTier(t *testing.T) {
+	configureTestConfig(t)
+
 	config, err := ConfigFor(" HOT ")
 	if err != nil {
 		t.Fatalf("ConfigFor returned error: %v", err)
@@ -88,6 +90,8 @@ func TestConfigForTierNormalizesTier(t *testing.T) {
 }
 
 func TestConfigForTierReturnsErrorWhenTierUnsupported(t *testing.T) {
+	configureTestConfig(t)
+
 	_, err := ConfigFor("burst")
 	if err == nil {
 		t.Fatal("ConfigFor returned nil error")
@@ -98,10 +102,15 @@ func TestConfigForTierReturnsErrorWhenTierUnsupported(t *testing.T) {
 }
 
 func TestLoadConfigAppliesFileConfig(t *testing.T) {
-	restoreDefaultConfig(t)
+	restoreRuntimeConfig(t)
 
 	configPath := filepath.Join(t.TempDir(), "config.yml")
 	if err := os.WriteFile(configPath, []byte(`pool:
+  shared:
+    MaxIdleConns: 1
+    MaxIdleConnsPerHost: 2
+    MaxConnsPerHost: 3
+    IdleConnTimeout: 4s
   tier:
     normal:
       MaxIdleConns: 11
@@ -118,7 +127,6 @@ func TestLoadConfigAppliesFileConfig(t *testing.T) {
       MaxIdleConnsPerHost: 32
       MaxConnsPerHost: 33
       IdleConnTimeout: 34s
-  default-tier: hot
 `), 0600); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
@@ -127,8 +135,15 @@ func TestLoadConfigAppliesFileConfig(t *testing.T) {
 		t.Fatalf("LoadConfig returned error: %v", err)
 	}
 
-	if DefaultTier() != TierHot {
-		t.Fatalf("DefaultTier = %q, want %q", DefaultTier(), TierHot)
+	sharedConfig, err := SharedConfig()
+	if err != nil {
+		t.Fatalf("SharedConfig returned error: %v", err)
+	}
+	if sharedConfig.MaxIdleConns != 1 {
+		t.Fatalf("sharedConfig.MaxIdleConns = %d, want %d", sharedConfig.MaxIdleConns, 1)
+	}
+	if sharedConfig.IdleConnTimeout != 4*time.Second {
+		t.Fatalf("sharedConfig.IdleConnTimeout = %s, want %s", sharedConfig.IdleConnTimeout, 4*time.Second)
 	}
 
 	config, err := ConfigFor(TierNormal)
@@ -142,57 +157,102 @@ func TestLoadConfigAppliesFileConfig(t *testing.T) {
 	if config.IdleConnTimeout != 14*time.Second {
 		t.Fatalf("config.IdleConnTimeout = %s, want %s", config.IdleConnTimeout, 14*time.Second)
 	}
-	if config.TLSHandshakeTimeout != 10*time.Second {
-		t.Fatalf("config.TLSHandshakeTimeout = %s, want %s", config.TLSHandshakeTimeout, 10*time.Second)
+	if config.TLSHandshakeTimeout != 0 {
+		t.Fatalf("config.TLSHandshakeTimeout = %s, want %s", config.TLSHandshakeTimeout, time.Duration(0))
 	}
 }
 
-func TestLoadConfigKeepsDefaultWhenFileValueMissing(t *testing.T) {
-	restoreDefaultConfig(t)
+func TestLoadConfigReturnsErrorWhenFileValueMissing(t *testing.T) {
+	restoreRuntimeConfig(t)
 
 	configPath := filepath.Join(t.TempDir(), "config.yml")
 	if err := os.WriteFile(configPath, []byte(`pool:
+  shared:
+    MaxIdleConns: 1
+    MaxIdleConnsPerHost: 2
+    MaxConnsPerHost: 3
+    IdleConnTimeout: 4s
   tier:
     normal:
       MaxIdleConns: 11
-    hot: {}
-    super: {}
-  default-tier: normal
+    hot:
+      MaxIdleConns: 21
+      MaxIdleConnsPerHost: 22
+      MaxConnsPerHost: 23
+      IdleConnTimeout: 24s
+    super:
+      MaxIdleConns: 31
+      MaxIdleConnsPerHost: 32
+      MaxConnsPerHost: 33
+      IdleConnTimeout: 34s
 `), 0600); err != nil {
 		t.Fatalf("WriteFile returned error: %v", err)
 	}
 
-	if err := LoadConfig(configPath); err != nil {
-		t.Fatalf("LoadConfig returned error: %v", err)
+	err := LoadConfig(configPath)
+	if err == nil {
+		t.Fatal("LoadConfig returned nil error")
 	}
-
-	config, err := ConfigFor(TierNormal)
-	if err != nil {
-		t.Fatalf("ConfigFor returned error: %v", err)
-	}
-
-	if config.MaxIdleConns != 11 {
-		t.Fatalf("config.MaxIdleConns = %d, want %d", config.MaxIdleConns, 11)
-	}
-	if config.MaxIdleConnsPerHost != 512 {
-		t.Fatalf("config.MaxIdleConnsPerHost = %d, want %d", config.MaxIdleConnsPerHost, 512)
-	}
-	if config.IdleConnTimeout != 90*time.Second {
-		t.Fatalf("config.IdleConnTimeout = %s, want %s", config.IdleConnTimeout, 90*time.Second)
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 }
 
-func restoreDefaultConfig(t *testing.T) {
+func configureTestConfig(t *testing.T) {
 	t.Helper()
 
-	previousDefaultTier := defaultTier
-	previousDefaultConfigs := make(map[Tier]Config, len(defaultConfigs))
-	for tier, config := range defaultConfigs {
-		previousDefaultConfigs[tier] = config
+	restoreRuntimeConfig(t)
+
+	if err := Configure(testSharedConfig(), testTierConfigs()); err != nil {
+		t.Fatalf("Configure returned error: %v", err)
 	}
+}
+
+func restoreRuntimeConfig(t *testing.T) {
+	t.Helper()
+
+	previousSharedConfig := sharedConfig
+	previousTierConfigs := make(map[Tier]Config, len(tierConfigs))
+	for tier, config := range tierConfigs {
+		previousTierConfigs[tier] = config
+	}
+	previousConfigured := configured
 
 	t.Cleanup(func() {
-		defaultTier = previousDefaultTier
-		defaultConfigs = previousDefaultConfigs
+		sharedConfig = previousSharedConfig
+		tierConfigs = previousTierConfigs
+		configured = previousConfigured
 	})
+}
+
+func testSharedConfig() Config {
+	return Config{
+		MaxIdleConns:        512,
+		MaxIdleConnsPerHost: 256,
+		MaxConnsPerHost:     512,
+		IdleConnTimeout:     45 * time.Second,
+	}
+}
+
+func testTierConfigs() map[Tier]Config {
+	return map[Tier]Config{
+		TierNormal: {
+			MaxIdleConns:        1024,
+			MaxIdleConnsPerHost: 512,
+			MaxConnsPerHost:     1024,
+			IdleConnTimeout:     90 * time.Second,
+		},
+		TierHot: {
+			MaxIdleConns:        2048,
+			MaxIdleConnsPerHost: 1024,
+			MaxConnsPerHost:     2048,
+			IdleConnTimeout:     180 * time.Second,
+		},
+		TierSuper: {
+			MaxIdleConns:        4096,
+			MaxIdleConnsPerHost: 2048,
+			MaxConnsPerHost:     4096,
+			IdleConnTimeout:     360 * time.Second,
+		},
+	}
 }

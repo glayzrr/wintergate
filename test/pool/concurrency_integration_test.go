@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	internalconfig "wintergate/internal/config"
-	internalpool "wintergate/internal/pool"
+	"wintergate/internal/pool/traffic"
 	"wintergate/test/harness"
 )
 
@@ -35,8 +35,8 @@ func TestPoolRuntimeHandlesConcurrentRequestsAndStatusReads(t *testing.T) {
 		),
 	))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	resultChs := make([]<-chan receiveResult, 0, requestCount)
 	for range requestCount {
@@ -144,8 +144,8 @@ func TestPoolRuntimeHandlesConcurrentRequestsForMultipleServices(t *testing.T) {
 		),
 	))
 
-	trafficRecorder := internalpool.NewRecorder()
-	orchestrator := newPoolOrchestrator(runtime, trafficRecorder)
+	trafficRecorder := traffic.NewRecorder()
+	orchestrator := newPoolOrchestrator(t, runtime, trafficRecorder)
 
 	orderResults := make([]<-chan receiveResult, 0, requestsPerService)
 	paymentResults := make([]<-chan receiveResult, 0, requestsPerService)

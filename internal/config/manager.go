@@ -7,7 +7,7 @@ import (
 )
 
 // Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다.
-// 주입 구현체: AddValidator에 *routeconfig.Validator, *authconfig.Store, *pool.Store가 들어옵니다.
+// 주입 구현체: AddValidator에 *routeconfig.Validator, *authconfig.Store, *policy.Store가 들어옵니다.
 type Validator interface {
 	Validate(candidate Snapshot) error
 }

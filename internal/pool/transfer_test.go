@@ -19,6 +19,8 @@ import (
 )
 
 func TestNewTransportAppliesTierConfig(t *testing.T) {
+	configureTestPool(t)
+
 	transport, err := NewTransport(poolconfig.TierSuper)
 	if err != nil {
 		t.Fatalf("NewTransport returned error: %v", err)
@@ -48,7 +50,9 @@ func TestNewTransportAppliesTierConfig(t *testing.T) {
 }
 
 func TestNewTransportClonesDefaultTransport(t *testing.T) {
-	transport, err := NewTransport("")
+	configureTestPool(t)
+
+	transport, err := NewTransport(poolconfig.TierNormal)
 	if err != nil {
 		t.Fatalf("NewTransport returned error: %v", err)
 	}
@@ -66,6 +70,8 @@ func TestNewTransportClonesDefaultTransport(t *testing.T) {
 }
 
 func TestHandleRequestForwardsUpstreamResponse(t *testing.T) {
+	configureTestPool(t)
+
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %q, want %q", r.Method, http.MethodPost)
@@ -179,6 +185,8 @@ func TestIsWebSocketRequest(t *testing.T) {
 }
 
 func TestHandleRequestUsesReverseProxyForWebSocket(t *testing.T) {
+	configureTestPool(t)
+
 	upstreamHeaders := make(chan http.Header, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isWebSocketRequest(r) {
@@ -252,6 +260,8 @@ func TestHandleRequestUsesReverseProxyForWebSocket(t *testing.T) {
 }
 
 func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.T) {
+	configureTestPool(t)
+
 	upstreamStarted := make(chan struct{}, 1)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamStarted <- struct{}{}
@@ -294,10 +304,12 @@ func TestHandleRequestReleasesDedicatedTierClientAfterContextTimeout(t *testing.
 }
 
 func TestClientStoreReusesSharedClient(t *testing.T) {
+	configureTestPool(t)
+
 	store := NewCoordinator()
 	sharedCount, dedicatedCount := store.count()
-	if sharedCount != 3 {
-		t.Fatalf("sharedCount = %d, want %d", sharedCount, 3)
+	if sharedCount != 1 {
+		t.Fatalf("sharedCount = %d, want %d", sharedCount, 1)
 	}
 	if dedicatedCount != 0 {
 		t.Fatalf("dedicatedCount = %d, want %d", dedicatedCount, 0)
@@ -316,7 +328,9 @@ func TestClientStoreReusesSharedClient(t *testing.T) {
 	}
 }
 
-func TestClientStoreUsesSharedTierClients(t *testing.T) {
+func TestClientStoreReusesSharedClientAcrossAssignmentTiers(t *testing.T) {
+	configureTestPool(t)
+
 	store := NewCoordinator()
 
 	normalClient := mustClient(t, store, policy.Assignment{
@@ -328,15 +342,17 @@ func TestClientStoreUsesSharedTierClients(t *testing.T) {
 		Tier:        poolconfig.TierHot,
 	})
 
-	if normalClient == hotClient {
-		t.Fatal("client store reused shared client across tiers")
+	if normalClient != hotClient {
+		t.Fatal("client store did not reuse shared client across assignment tiers")
 	}
-	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 0 {
-		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 0)
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 1 || dedicatedCount != 0 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 1, 0)
 	}
 }
 
 func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
+	configureTestPool(t)
+
 	store := NewCoordinator()
 
 	orderClient := mustClient(t, store, policy.Assignment{
@@ -354,12 +370,14 @@ func TestClientStoreSeparatesDedicatedClients(t *testing.T) {
 		t.Fatal("client store reused dedicated client across services")
 	}
 
-	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 2 {
-		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 2)
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 1 || dedicatedCount != 2 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 1, 2)
 	}
 }
 
 func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
+	configureTestPool(t)
+
 	store := NewCoordinator()
 
 	hotClient := mustClient(t, store, policy.Assignment{
@@ -379,12 +397,14 @@ func TestClientStoreReplacesDedicatedClientWhenTierChanges(t *testing.T) {
 	if tier, found := store.dedicatedTier("order-service"); !found || tier != poolconfig.TierSuper {
 		t.Fatalf("dedicated tier = (%q, %t), want (%q, %t)", tier, found, poolconfig.TierSuper, true)
 	}
-	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 1 {
-		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 1)
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 1 || dedicatedCount != 1 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 1, 1)
 	}
 }
 
 func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
+	configureTestPool(t)
+
 	store := NewCoordinator()
 
 	dedicatedClient := mustClient(t, store, policy.Assignment{
@@ -392,17 +412,14 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 		Tier:        poolconfig.TierHot,
 		Dedicated:   true,
 	})
-	sharedHotClient, found := store.sharedClientForTier(poolconfig.TierHot)
-	if !found {
-		t.Fatal("shared hot client not found")
-	}
+	sharedClient := sharedCachedClient(t, store)
 
 	client := mustClient(t, store, policy.Assignment{
 		ServiceName: "order-service",
 		Tier:        poolconfig.TierHot,
 	})
 
-	if client.client != sharedHotClient {
+	if client != sharedClient {
 		t.Fatal("client store did not return shared client after dedicated release")
 	}
 	if client == dedicatedClient {
@@ -411,8 +428,43 @@ func TestClientStoreReleasesDedicatedClientWhenDecisionIsShared(t *testing.T) {
 	if _, found := store.dedicatedTier("order-service"); found {
 		t.Fatal("dedicated client still exists after shared decision")
 	}
-	if sharedCount, dedicatedCount := store.count(); sharedCount != 3 || dedicatedCount != 0 {
-		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 3, 0)
+	if sharedCount, dedicatedCount := store.count(); sharedCount != 1 || dedicatedCount != 0 {
+		t.Fatalf("count = (%d, %d), want (%d, %d)", sharedCount, dedicatedCount, 1, 0)
+	}
+}
+
+func configureTestPool(t *testing.T) {
+	t.Helper()
+
+	err := poolconfig.Configure(poolconfig.Config{
+		MaxIdleConns:        512,
+		MaxIdleConnsPerHost: 256,
+		MaxConnsPerHost:     512,
+		IdleConnTimeout:     45 * time.Second,
+	}, map[poolconfig.Tier]poolconfig.Config{
+		poolconfig.TierNormal: {
+			MaxIdleConns:        1024,
+			MaxIdleConnsPerHost: 512,
+			MaxConnsPerHost:     1024,
+			IdleConnTimeout:     90 * time.Second,
+		},
+		poolconfig.TierHot: {
+			MaxIdleConns:        2048,
+			MaxIdleConnsPerHost: 1024,
+			MaxConnsPerHost:     2048,
+			IdleConnTimeout:     180 * time.Second,
+		},
+		poolconfig.TierSuper: {
+			MaxIdleConns:          4096,
+			MaxIdleConnsPerHost:   2048,
+			MaxConnsPerHost:       4096,
+			IdleConnTimeout:       360 * time.Second,
+			TLSHandshakeTimeout:   40 * time.Second,
+			ExpectContinueTimeout: 4 * time.Second,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Configure returned error: %v", err)
 	}
 }
 
@@ -441,15 +493,15 @@ func handleRequestAsync(t *testing.T, trafficRecorder *traffic.Recorder, forward
 	return errCh
 }
 
-func sharedCachedClient(t *testing.T, store *Coordinator, tier poolconfig.Tier) *managedClient {
+func sharedCachedClient(t *testing.T, store *Coordinator) *managedClient {
 	t.Helper()
 
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
-	client := store.shared[tier]
+	client := store.shared
 	if client == nil {
-		t.Fatalf("shared client for %q not found", tier)
+		t.Fatal("shared client not found")
 	}
 
 	return client
