@@ -733,7 +733,7 @@ func (t *ThresholdSettings) Clone() *ThresholdSettings
 <a name="Validator"></a>
 ## type Validator
 
-Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다. 주입 구현체: AddValidator에 \*routeconfig.Validator, \*authconfig.Store, \*pool.Store가 들어옵니다.
+Validator 후보 스냅샷 전체가 런타임에 반영 가능한지 검증합니다. 주입 구현체: AddValidator에 \*routeconfig.Validator, \*authconfig.Store, \*policy.Store가 들어옵니다.
 
 ```go
 type Validator interface {
@@ -903,11 +903,11 @@ type PoolForwarder interface {
 <a name="PoolProvider"></a>
 ## type PoolProvider
 
-PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다. 주입 구현체: NewTransferTask에 \*pool.Store가 들어옵니다.
+PoolProvider 현재 트래픽 상태에 맞는 pool 할당 결과를 제공합니다. 주입 구현체: NewTransferTask에 \*policy.Store가 들어옵니다.
 
 ```go
 type PoolProvider interface {
-    AssignmentFor(snapshot *internalconfig.Snapshot, status pool.Status) pool.Assignment
+    AssignmentFor(snapshot *internalconfig.Snapshot, status traffic.Status) policy.Assignment
 }
 ```
 
@@ -1048,12 +1048,12 @@ Run 요청 ID를 상태, 요청 헤더, 응답 헤더에 반영합니다.
 <a name="TrafficRecorder"></a>
 ## type TrafficRecorder
 
-TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다. 주입 구현체: NewTransferTask에 \*pool.Recorder가 들어옵니다.
+TrafficRecorder 서비스별 트래픽 상태를 기록하고 조회합니다. 주입 구현체: NewTransferTask에 \*traffic.Recorder가 들어옵니다.
 
 ```go
 type TrafficRecorder interface {
-    Start(configKey string) pool.DoneFunc
-    StatusFor(configKey string) (pool.Status, error)
+    Start(configKey string) traffic.DoneFunc
+    StatusFor(configKey string) (traffic.Status, error)
 }
 ```
 
@@ -1314,37 +1314,16 @@ import "wintergate/internal/pool"
 ## Index
 
 - [Variables](<#variables>)
-- [func Configure\(configs map\[Tier\]Config, tier Tier\) error](<#Configure>)
-- [func LoadConfig\(path string\) error](<#LoadConfig>)
-- [func NewTransport\(tier Tier\) \(\*http.Transport, error\)](<#NewTransport>)
-- [type Assignment](<#Assignment>)
+- [func NewTransport\(tier poolconfig.Tier\) \(\*http.Transport, error\)](<#NewTransport>)
 - [type ClientLease](<#ClientLease>)
 - [type ClientProvider](<#ClientProvider>)
-- [type Config](<#Config>)
-  - [func ConfigFor\(tier Tier\) \(Config, error\)](<#ConfigFor>)
 - [type Coordinator](<#Coordinator>)
   - [func NewCoordinator\(\) \*Coordinator](<#NewCoordinator>)
-  - [func \(p \*Coordinator\) Acquire\(assignment Assignment\) \(ClientLease, error\)](<#Coordinator.Acquire>)
-- [type DoneFunc](<#DoneFunc>)
+  - [func \(p \*Coordinator\) Acquire\(assignment policy.Assignment\) \(ClientLease, error\)](<#Coordinator.Acquire>)
 - [type ForwardRequest](<#ForwardRequest>)
 - [type Forwarder](<#Forwarder>)
   - [func NewForwarder\(clients ClientProvider, recorder \*metricrecord.Recorder\) \*Forwarder](<#NewForwarder>)
   - [func \(f \*Forwarder\) Handle\(request ForwardRequest\) error](<#Forwarder.Handle>)
-- [type Recorder](<#Recorder>)
-  - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
-  - [func \(r \*Recorder\) Start\(configKey string\) DoneFunc](<#Recorder.Start>)
-  - [func \(r \*Recorder\) StatusFor\(configKey string\) \(Status, error\)](<#Recorder.StatusFor>)
-- [type Status](<#Status>)
-- [type Store](<#Store>)
-  - [func NewStore\(\) \*Store](<#NewStore>)
-  - [func \(s \*Store\) Apply\(settings config.Settings\) error](<#Store.Apply>)
-  - [func \(s \*Store\) AssignmentFor\(snapshot \*config.Snapshot, status Status\) Assignment](<#Store.AssignmentFor>)
-  - [func \(s \*Store\) Delete\(serviceName string\)](<#Store.Delete>)
-  - [func \(s \*Store\) PolicyFor\(snapshot \*config.Snapshot, serviceName string\) \(poolInfo, bool\)](<#Store.PolicyFor>)
-  - [func \(s \*Store\) Validate\(candidate config.Snapshot\) error](<#Store.Validate>)
-- [type Threshold](<#Threshold>)
-- [type Tier](<#Tier>)
-  - [func DefaultTier\(\) Tier](<#DefaultTier>)
 
 
 ## Variables
@@ -1354,52 +1333,18 @@ import "wintergate/internal/pool"
 ```go
 var (
     ErrInvalidConfig    = errors.New("invalid pool config")
-    ErrInvalidPolicy    = errors.New("invalid traffic policy")
     ErrInvalidConfigKey = errors.New("invalid config key")
-    ErrStatusNotFound   = errors.New("traffic status not found")
 )
 ```
-
-<a name="Configure"></a>
-## func Configure
-
-```go
-func Configure(configs map[Tier]Config, tier Tier) error
-```
-
-Configure 서버 시작 시 읽은 커넥션 풀 설정을 기본 설정으로 반영합니다.
-
-<a name="LoadConfig"></a>
-## func LoadConfig
-
-```go
-func LoadConfig(path string) error
-```
-
-LoadConfig 설정 파일의 pool 설정을 기본 커넥션 풀 설정으로 반영합니다.
 
 <a name="NewTransport"></a>
 ## func NewTransport
 
 ```go
-func NewTransport(tier Tier) (*http.Transport, error)
+func NewTransport(tier poolconfig.Tier) (*http.Transport, error)
 ```
 
 NewTransport 티어 풀 설정을 반영한 새 http.Transport를 생성합니다.
-
-<a name="Assignment"></a>
-## type Assignment
-
-Assignment 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
-
-```go
-type Assignment struct {
-    ServiceName string
-    Tier        Tier
-    Dedicated   bool
-    Status      Status
-}
-```
 
 <a name="ClientLease"></a>
 ## type ClientLease
@@ -1420,36 +1365,9 @@ ClientProvider 요청별 pool 결정 결과에 맞는 http.Client를 대여합�
 
 ```go
 type ClientProvider interface {
-    Acquire(Assignment) (ClientLease, error)
+    Acquire(policy.Assignment) (ClientLease, error)
 }
 ```
-
-<a name="Config"></a>
-## type Config
-
-Config http.Transport 커넥션 풀 관련 설정입니다.
-
-```go
-type Config struct {
-    Tier                  Tier
-    MaxIdleConns          int
-    MaxIdleConnsPerHost   int
-    MaxConnsPerHost       int
-    IdleConnTimeout       time.Duration
-    ResponseHeaderTimeout time.Duration
-    TLSHandshakeTimeout   time.Duration
-    ExpectContinueTimeout time.Duration
-}
-```
-
-<a name="ConfigFor"></a>
-### func ConfigFor
-
-```go
-func ConfigFor(tier Tier) (Config, error)
-```
-
-ConfigFor 지정한 티어의 풀 설정을 반환합니다.
 
 <a name="Coordinator"></a>
 ## type Coordinator
@@ -1475,19 +1393,10 @@ NewCoordinator 현재 pool 설정으로 Coordinator를 생성합니다.
 ### func \(\*Coordinator\) Acquire
 
 ```go
-func (p *Coordinator) Acquire(assignment Assignment) (ClientLease, error)
+func (p *Coordinator) Acquire(assignment policy.Assignment) (ClientLease, error)
 ```
 
 Acquire 요청별 pool 결정 결과에 맞는 http.Client lease를 반환합니다.
-
-<a name="DoneFunc"></a>
-## type DoneFunc
-
-DoneFunc 요청 처리가 끝났을 때 호출해 트래픽 기록을 마무리합니다.
-
-```go
-type DoneFunc func()
-```
 
 <a name="ForwardRequest"></a>
 ## type ForwardRequest
@@ -1499,7 +1408,7 @@ type ForwardRequest struct {
     Address    string
     Writer     http.ResponseWriter
     Request    *http.Request
-    Assignment Assignment
+    Assignment policy.Assignment
 }
 ```
 
@@ -1531,169 +1440,6 @@ func (f *Forwarder) Handle(request ForwardRequest) error
 ```
 
 Handle 결정된 커넥션 풀로 요청을 업스트림에 전달합니다.
-
-<a name="Recorder"></a>
-## type Recorder
-
-Recorder 설정 키별 트래픽 상태를 기록합니다.
-
-```go
-type Recorder struct {
-    // contains filtered or unexported fields
-}
-```
-
-<a name="NewRecorder"></a>
-### func NewRecorder
-
-```go
-func NewRecorder() *Recorder
-```
-
-NewRecorder 기본 window를 사용하는 트래픽 Recorder를 생성합니다.
-
-<a name="Recorder.Start"></a>
-### func \(\*Recorder\) Start
-
-```go
-func (r *Recorder) Start(configKey string) DoneFunc
-```
-
-Start 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
-
-<a name="Recorder.StatusFor"></a>
-### func \(\*Recorder\) StatusFor
-
-```go
-func (r *Recorder) StatusFor(configKey string) (Status, error)
-```
-
-StatusFor 설정 키별 트래픽 상태의 현재 값을 반환합니다.
-
-<a name="Status"></a>
-## type Status
-
-Status 특정 설정 키의 현재 트래픽 상태입니다.
-
-```go
-type Status struct {
-    ConfigKey        string
-    InFlight         int64
-    StartedRequests  uint64
-    FinishedRequests uint64
-    RequestsInWindow uint64
-    RPS              float64
-    AverageLatency   time.Duration
-    Window           time.Duration
-    LastSeenAt       time.Time
-}
-```
-
-<a name="Store"></a>
-## type Store
-
-Store snapshot의 threshold 설정으로 pool assignment를 계산합니다.
-
-```go
-type Store struct{}
-```
-
-<a name="NewStore"></a>
-### func NewStore
-
-```go
-func NewStore() *Store
-```
-
-NewStore 빈 트래픽 정책 저장소를 생성합니다.
-
-<a name="Store.Apply"></a>
-### func \(\*Store\) Apply
-
-```go
-func (s *Store) Apply(settings config.Settings) error
-```
-
-Apply 중앙 snapshot 전환 이후 threshold를 내부 저장소에 복제하지 않습니다.
-
-<a name="Store.AssignmentFor"></a>
-### func \(\*Store\) AssignmentFor
-
-```go
-func (s *Store) AssignmentFor(snapshot *config.Snapshot, status Status) Assignment
-```
-
-AssignmentFor 등록 정책이 있으면 RPS/in\-flight 기준으로 tier를 결정합니다.
-
-<a name="Store.Delete"></a>
-### func \(\*Store\) Delete
-
-```go
-func (s *Store) Delete(serviceName string)
-```
-
-Delete 지정한 서비스 이름의 정책을 제거합니다.
-
-<a name="Store.PolicyFor"></a>
-### func \(\*Store\) PolicyFor
-
-```go
-func (s *Store) PolicyFor(snapshot *config.Snapshot, serviceName string) (poolInfo, bool)
-```
-
-PolicyFor 서비스 이름별 등록 정책의 사본을 반환합니다.
-
-<a name="Store.Validate"></a>
-### func \(\*Store\) Validate
-
-```go
-func (s *Store) Validate(candidate config.Snapshot) error
-```
-
-Validate 후보 스냅샷의 전체 풀 정책이 반영 가능한지 검증합니다.
-
-<a name="Threshold"></a>
-## type Threshold
-
-Threshold 특정 풀 티어로 승격하기 위한 RPS/in\-flight 기준입니다.
-
-```go
-type Threshold struct {
-    RPS      float64
-    InFlight int64
-}
-```
-
-<a name="Tier"></a>
-## type Tier
-
-Tier 트래픽 규모별 커넥션 풀 설정 단계를 표현합니다.
-
-```go
-type Tier string
-```
-
-<a name="TierNormal"></a>
-
-```go
-const (
-    // TierNormal 일반 트래픽용 기본 풀 설정입니다.
-    TierNormal Tier = "normal"
-    // TierHot 트래픽이 몰리는 서비스용 풀 설정입니다.
-    TierHot Tier = "hot"
-    // TierSuper 매우 높은 트래픽을 받는 서비스용 풀 설정입니다.
-    TierSuper Tier = "super"
-)
-```
-
-<a name="DefaultTier"></a>
-### func DefaultTier
-
-```go
-func DefaultTier() Tier
-```
-
-DefaultTier 설정 파일에서 읽은 기본 공유 풀 티어를 반환합니다.
 
 # trace
 
@@ -2232,6 +1978,305 @@ RequestRecorder HTTP 요청 메트릭을 기록합니다.
 ```go
 type RequestRecorder struct {
     // contains filtered or unexported fields
+}
+```
+
+# config
+
+```go
+import "wintergate/internal/pool/config"
+```
+
+## Index
+
+- [Variables](<#variables>)
+- [func Configure\(shared Config, tiers map\[Tier\]Config\) error](<#Configure>)
+- [func LoadConfig\(path string\) error](<#LoadConfig>)
+- [type Config](<#Config>)
+  - [func ConfigFor\(tier Tier\) \(Config, error\)](<#ConfigFor>)
+  - [func SharedConfig\(\) \(Config, error\)](<#SharedConfig>)
+- [type Tier](<#Tier>)
+
+
+## Variables
+
+<a name="ErrInvalidConfig"></a>
+
+```go
+var ErrInvalidConfig = errors.New("invalid pool config")
+```
+
+<a name="Configure"></a>
+## func Configure
+
+```go
+func Configure(shared Config, tiers map[Tier]Config) error
+```
+
+Configure 서버 시작 시 읽은 공유풀과 티어별 풀 설정을 런타임 설정으로 반영합니다.
+
+<a name="LoadConfig"></a>
+## func LoadConfig
+
+```go
+func LoadConfig(path string) error
+```
+
+LoadConfig 설정 파일의 pool 설정을 기본 커넥션 풀 설정으로 반영합니다.
+
+<a name="Config"></a>
+## type Config
+
+Config http.Transport 커넥션 풀 관련 설정입니다.
+
+```go
+type Config struct {
+    Tier                  Tier
+    MaxIdleConns          int
+    MaxIdleConnsPerHost   int
+    MaxConnsPerHost       int
+    IdleConnTimeout       time.Duration
+    ResponseHeaderTimeout time.Duration
+    TLSHandshakeTimeout   time.Duration
+    ExpectContinueTimeout time.Duration
+}
+```
+
+<a name="ConfigFor"></a>
+### func ConfigFor
+
+```go
+func ConfigFor(tier Tier) (Config, error)
+```
+
+ConfigFor 지정한 티어의 풀 설정을 반환합니다.
+
+<a name="SharedConfig"></a>
+### func SharedConfig
+
+```go
+func SharedConfig() (Config, error)
+```
+
+SharedConfig 공유풀 설정을 반환합니다.
+
+<a name="Tier"></a>
+## type Tier
+
+
+
+```go
+type Tier string
+```
+
+<a name="TierNormal"></a>
+
+```go
+const (
+    TierNormal Tier = "normal"
+    TierHot    Tier = "hot"
+    TierSuper  Tier = "super"
+)
+```
+
+# policy
+
+```go
+import "wintergate/internal/pool/policy"
+```
+
+## Index
+
+- [Variables](<#variables>)
+- [type Assignment](<#Assignment>)
+- [type Store](<#Store>)
+  - [func NewStore\(\) \*Store](<#NewStore>)
+  - [func \(s \*Store\) Apply\(settings internalconfig.Settings\) error](<#Store.Apply>)
+  - [func \(s \*Store\) AssignmentFor\(snapshot \*internalconfig.Snapshot, status traffic.Status\) Assignment](<#Store.AssignmentFor>)
+  - [func \(s \*Store\) Delete\(serviceName string\)](<#Store.Delete>)
+  - [func \(s \*Store\) Validate\(candidate internalconfig.Snapshot\) error](<#Store.Validate>)
+- [type Threshold](<#Threshold>)
+
+
+## Variables
+
+<a name="ErrInvalidPolicy"></a>
+
+```go
+var ErrInvalidPolicy = errors.New("invalid traffic policy")
+```
+
+<a name="Assignment"></a>
+## type Assignment
+
+Assignment 현재 트래픽 상태와 등록 정책을 바탕으로 결정한 풀 사용 방식입니다.
+
+```go
+type Assignment struct {
+    ServiceName string
+    Tier        poolconfig.Tier
+    Dedicated   bool
+    Status      traffic.Status
+}
+```
+
+<a name="Store"></a>
+## type Store
+
+Store snapshot의 threshold 설정으로 pool assignment를 계산합니다.
+
+```go
+type Store struct{}
+```
+
+<a name="NewStore"></a>
+### func NewStore
+
+```go
+func NewStore() *Store
+```
+
+NewStore 빈 트래픽 정책 저장소를 생성합니다.
+
+<a name="Store.Apply"></a>
+### func \(\*Store\) Apply
+
+```go
+func (s *Store) Apply(settings internalconfig.Settings) error
+```
+
+Apply 중앙 snapshot 전환 이후 threshold를 내부 저장소에 복제하지 않습니다.
+
+<a name="Store.AssignmentFor"></a>
+### func \(\*Store\) AssignmentFor
+
+```go
+func (s *Store) AssignmentFor(snapshot *internalconfig.Snapshot, status traffic.Status) Assignment
+```
+
+AssignmentFor 등록 정책이 있으면 RPS/in\-flight 기준으로 tier를 결정합니다.
+
+<a name="Store.Delete"></a>
+### func \(\*Store\) Delete
+
+```go
+func (s *Store) Delete(serviceName string)
+```
+
+Delete 지정한 서비스 이름의 정책을 제거합니다.
+
+<a name="Store.Validate"></a>
+### func \(\*Store\) Validate
+
+```go
+func (s *Store) Validate(candidate internalconfig.Snapshot) error
+```
+
+Validate 후보 스냅샷의 전체 풀 정책이 반영 가능한지 검증합니다.
+
+<a name="Threshold"></a>
+## type Threshold
+
+Threshold 특정 풀 티어로 승격하기 위한 RPS/in\-flight 기준입니다.
+
+```go
+type Threshold struct {
+    RPS      float64
+    InFlight int64
+}
+```
+
+# traffic
+
+```go
+import "wintergate/internal/pool/traffic"
+```
+
+## Index
+
+- [Variables](<#variables>)
+- [type DoneFunc](<#DoneFunc>)
+- [type Recorder](<#Recorder>)
+  - [func NewRecorder\(\) \*Recorder](<#NewRecorder>)
+  - [func \(r \*Recorder\) Start\(configKey string\) DoneFunc](<#Recorder.Start>)
+  - [func \(r \*Recorder\) StatusFor\(configKey string\) \(Status, error\)](<#Recorder.StatusFor>)
+- [type Status](<#Status>)
+
+
+## Variables
+
+<a name="ErrInvalidConfigKey"></a>
+
+```go
+var (
+    ErrInvalidConfigKey = errors.New("invalid config key")
+    ErrStatusNotFound   = errors.New("traffic status not found")
+)
+```
+
+<a name="DoneFunc"></a>
+## type DoneFunc
+
+DoneFunc 요청 처리가 끝났을 때 호출해 트래픽 기록을 마무리합니다.
+
+```go
+type DoneFunc func()
+```
+
+<a name="Recorder"></a>
+## type Recorder
+
+Recorder 설정 키별 트래픽 상태를 기록합니다.
+
+```go
+type Recorder struct {
+    // contains filtered or unexported fields
+}
+```
+
+<a name="NewRecorder"></a>
+### func NewRecorder
+
+```go
+func NewRecorder() *Recorder
+```
+
+NewRecorder 기본 window를 사용하는 트래픽 Recorder를 생성합니다.
+
+<a name="Recorder.Start"></a>
+### func \(\*Recorder\) Start
+
+```go
+func (r *Recorder) Start(configKey string) DoneFunc
+```
+
+Start 설정 키별 요청 시작을 기록하고 완료 함수를 반환합니다.
+
+<a name="Recorder.StatusFor"></a>
+### func \(\*Recorder\) StatusFor
+
+```go
+func (r *Recorder) StatusFor(configKey string) (Status, error)
+```
+
+StatusFor 설정 키별 트래픽 상태의 현재 값을 반환합니다.
+
+<a name="Status"></a>
+## type Status
+
+Status 특정 설정 키의 현재 트래픽 상태입니다.
+
+```go
+type Status struct {
+    ConfigKey        string
+    InFlight         int64
+    StartedRequests  uint64
+    FinishedRequests uint64
+    RequestsInWindow uint64
+    RPS              float64
+    AverageLatency   time.Duration
+    Window           time.Duration
+    LastSeenAt       time.Time
 }
 ```
 
