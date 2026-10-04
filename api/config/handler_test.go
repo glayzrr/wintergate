@@ -337,7 +337,7 @@ func TestHandlerDeregisterInstanceReturnsBadRequestWhenPayloadInvalid(t *testing
 	request := httptest.NewRequest(
 		http.MethodDelete,
 		"/api/config/order-service/instances",
-		strings.NewReader(`{"scheme":"http","host":"localhost","port":"8080","unknown":true}`),
+		strings.NewReader(`{`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
