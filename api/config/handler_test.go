@@ -245,6 +245,143 @@ func TestHandlerEnrollConfigReturnsBadRequestWhenRegisterFails(t *testing.T) {
 	}
 }
 
+func TestHandlerConfigForReturnsRegisteredConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	manager := newTestManager()
+	registerTestService(t, manager)
+	router := newTestRouter(t, manager)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/config/order-service", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+	if response.Message != responseConfigFound {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseConfigFound)
+	}
+	if response.Data == nil {
+		t.Fatal("response.Data = nil, want registered config")
+	}
+}
+
+func TestHandlerConfigForReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := newTestRouter(t, newTestManager())
+	request := httptest.NewRequest(http.MethodGet, "/api/config/missing-service", nil)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+	if response.Message != responseConfigNotFound {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseConfigNotFound)
+	}
+}
+
+func TestHandlerDeregisterInstanceRemovesRegisteredInstance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	manager := newTestManager()
+	registerTestService(t, manager)
+	router := newTestRouter(t, manager)
+
+	request := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/config/order-service/instances",
+		strings.NewReader(`{"scheme":"http","host":"localhost","port":8080}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, true)
+	}
+	if response.Message != responseDeregisterSuccess {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseDeregisterSuccess)
+	}
+
+	settings, found := manager.ConfigFor("order-service")
+	if !found {
+		t.Fatal("ConfigFor did not return the registered service")
+	}
+	if len(settings.Instances) != 0 {
+		t.Fatalf("len(settings.Instances) = %d, want 0", len(settings.Instances))
+	}
+}
+
+func TestHandlerDeregisterInstanceReturnsBadRequestWhenPayloadInvalid(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := newTestRouter(t, newTestManager())
+	request := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/config/order-service/instances",
+		strings.NewReader(`{`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+	if response.Message != responseBindFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseBindFailed)
+	}
+}
+
+func TestHandlerDeregisterInstanceReturnsNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := newTestRouter(t, newTestManager())
+	request := httptest.NewRequest(
+		http.MethodDelete,
+		"/api/config/missing-service/instances",
+		strings.NewReader(`{"scheme":"http","host":"localhost","port":"8080"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("response.Success = %v, want %v", response.Success, false)
+	}
+	if response.Message != responseDeregisterFailed {
+		t.Fatalf("response.Message = %q, want %q", response.Message, responseDeregisterFailed)
+	}
+}
+
 func decodeAPIResponse(t *testing.T, recorder *httptest.ResponseRecorder) responseapi.APIResponse {
 	t.Helper()
 
@@ -263,6 +400,36 @@ func newTestManager(validators ...internalconfig.Validator) *internalconfig.Mana
 	}
 
 	return manager
+}
+
+func newTestRouter(t *testing.T, manager *internalconfig.Manager) *gin.Engine {
+	t.Helper()
+
+	handler, err := NewHandler(manager)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	router := gin.New()
+	handler.RegisterRoutes(router)
+
+	return router
+}
+
+func registerTestService(t *testing.T, manager *internalconfig.Manager) {
+	t.Helper()
+
+	err := manager.Register(internalconfig.Settings{
+		Global:      &internalconfig.GlobalSettings{},
+		Instance:    &internalconfig.InstanceSettings{Scheme: "http", Host: "localhost", Port: "8080"},
+		ServiceName: "order-service",
+		Endpoints: []internalconfig.EndpointSettings{
+			{Path: "/api/order", Method: http.MethodGet},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
+	}
 }
 
 func generateRSAKey(t *testing.T) *rsa.PrivateKey {
