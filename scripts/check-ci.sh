@@ -10,6 +10,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd -- "$script_dir/.."
 
 required_coverage=80
+go_toolchain=go1.26.0
 if [[ -n "${1:-}" ]]; then
   coverage_file="$1"
 else
@@ -18,9 +19,10 @@ else
 fi
 
 # 통합 테스트가 호출하는 프로젝트 패키지의 실행 경로도 커버리지에 포함합니다.
-go test -coverpkg=./... -covermode=atomic -coverprofile="$coverage_file" ./...
+printf 'using %s\n' "$go_toolchain"
+GOTOOLCHAIN="$go_toolchain" go test -count=1 -coverpkg=./... -covermode=atomic -coverprofile="$coverage_file" ./...
 
-total="$(go tool cover -func="$coverage_file" | awk '/^total:/ {gsub("%", "", $3); print $3}')"
+total="$(GOTOOLCHAIN="$go_toolchain" go tool cover -func="$coverage_file" | awk '/^total:/ {gsub("%", "", $3); print $3}')"
 if [[ -z "$total" ]]; then
   printf 'Failed to resolve total coverage.\n' >&2
   exit 1

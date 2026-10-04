@@ -28,7 +28,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: '1.26.0'
 
       - name: Run tests and enforce coverage threshold
         id: coverage
