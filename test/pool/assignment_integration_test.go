@@ -11,7 +11,7 @@ import (
 	"wintergate/test/harness"
 )
 
-func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing.T) {
+func TestRegisteredThresholdsSeparatePoolAndDelayReturnToShared(t *testing.T) {
 	runtime := harness.NewRuntime()
 	runtime.Register(t, harness.ServiceSettings(
 		"order-service",
@@ -82,16 +82,16 @@ func TestRegisteredThresholdsMoveClientBetweenSharedAndDedicatedPools(t *testing
 		t.Fatalf("StatusFor returned error after completion: %v", err)
 	}
 	afterDoneAssignment := runtime.PoolStore.AssignmentFor(runtime.Manager.Settings(), afterDoneStatus)
-	if afterDoneAssignment.Dedicated {
-		t.Fatal("assignment is dedicated after in-flight dropped below threshold, want shared")
+	if !afterDoneAssignment.Dedicated || afterDoneAssignment.Tier != poolconfig.TierHot {
+		t.Fatal("assignment returned to shared before the return delay elapsed")
 	}
 
 	afterDoneLease, err := coordinator.Acquire(afterDoneAssignment)
 	if err != nil {
 		t.Fatalf("Acquire returned error after completion: %v", err)
 	}
-	if afterDoneLease.Client != firstLease.Client {
-		t.Fatal("shared assignment did not return to the original shared client")
+	if afterDoneLease.Client != secondLease.Client {
+		t.Fatal("assignment did not reuse the dedicated client during the return delay")
 	}
 	afterDoneLease.Finish()
 }

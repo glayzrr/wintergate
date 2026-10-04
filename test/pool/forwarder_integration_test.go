@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	internalconfig "wintergate/internal/config"
-	internalpool "wintergate/internal/pool"
 	poolconfig "wintergate/internal/pool/config"
 	"wintergate/internal/pool/traffic"
 	"wintergate/test/harness"
@@ -103,8 +102,8 @@ func TestRegisteredPoolRuntimeForwardsRequestsAndChangesAssignment(t *testing.T)
 	if afterDoneStatus.InFlight != 0 {
 		t.Fatalf("after done InFlight = %d, want 0", afterDoneStatus.InFlight)
 	}
-	if afterDoneAssignment.Dedicated {
-		t.Fatal("assignment is dedicated after in-flight dropped below threshold, want shared")
+	if !afterDoneAssignment.Dedicated || afterDoneAssignment.Tier != poolconfig.TierHot {
+		t.Fatal("assignment returned to shared before the return delay elapsed")
 	}
 }
 
