@@ -56,6 +56,7 @@ func newSharedClient() (*managedClient, error) {
 	}
 
 	return &managedClient{
+		tier: config.Tier,
 		client: &http.Client{
 			Transport: transport,
 		},

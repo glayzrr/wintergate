@@ -27,7 +27,7 @@ var (
 
 // Configure 서버 시작 시 읽은 공유풀과 티어별 풀 설정을 런타임 설정으로 반영합니다.
 func Configure(shared Config, tiers map[Tier]Config) error {
-	shared.Tier = ""
+	shared.Tier = TierShared
 	if err := validateConfig(shared); err != nil {
 		return fmt.Errorf("validate shared pool config: %w", err)
 	}
@@ -41,6 +41,9 @@ func Configure(shared Config, tiers map[Tier]Config) error {
 		normalizedTier, err := normalizeTier(tier)
 		if err != nil {
 			return fmt.Errorf("normalize tier: %w", err)
+		}
+		if normalizedTier == TierShared {
+			return fmt.Errorf("%w: shared pool must be configured separately from dedicated tiers", ErrInvalidConfig)
 		}
 
 		config.Tier = normalizedTier
@@ -82,6 +85,9 @@ func ConfigFor(tier Tier) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if normalizedTier == TierShared {
+		return sharedConfig, nil
+	}
 
 	config, found := tierConfigs[normalizedTier]
 	if !found {
@@ -95,6 +101,7 @@ func normalizeTier(tier Tier) (Tier, error) {
 	normalizedTier, ok := utils.NormalizeEnum(
 		string(tier),
 		"",
+		string(TierShared),
 		string(TierNormal),
 		string(TierHot),
 		string(TierSuper),

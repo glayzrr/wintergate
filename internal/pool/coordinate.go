@@ -147,9 +147,9 @@ func (p *Coordinator) dedicatedClient(assignment policy.Assignment) (*managedCli
 	}
 
 	// 기존 전용 client는 새 요청에서 제외하고, 진행 중 요청이 끝난 뒤 idle connection을 닫습니다.
-	previousTier := ""
+	previousTier := poolconfig.TierShared
 	if cached != nil {
-		previousTier = string(cached.tier)
+		previousTier = cached.tier
 		cached.retire()
 	}
 	p.dedicated[configKey] = nextClient
@@ -189,7 +189,7 @@ func (p *Coordinator) dedicatedTier(configKey string) (poolconfig.Tier, bool) {
 
 	cached := p.dedicated[utils.NormalizeServiceName(configKey)]
 	if cached == nil {
-		return "", false
+		return poolconfig.TierShared, false
 	}
 
 	return cached.tier, true

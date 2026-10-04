@@ -15,7 +15,7 @@ type fileConfig struct {
 }
 
 type filePoolConfig struct {
-	Shared *filePoolConfigValue       `yaml:"shared"`
+	Shared *filePoolConfigValue         `yaml:"shared"`
 	Tier   map[Tier]filePoolConfigValue `yaml:"tier"`
 }
 
@@ -107,10 +107,11 @@ func (c filePoolConfig) configs() (Config, map[Tier]Config, error) {
 		return Config{}, nil, fmt.Errorf("%w: tier pool configs are required", ErrInvalidConfig)
 	}
 
-	sharedConfig, err := c.Shared.config("shared")
+	sharedConfig, err := c.Shared.config(string(TierShared))
 	if err != nil {
 		return Config{}, nil, err
 	}
+	sharedConfig.Tier = TierShared
 
 	configs := make(map[Tier]Config, len(c.Tier))
 	for tier, fileConfig := range c.Tier {
@@ -146,10 +147,10 @@ func (c filePoolConfigValue) config(name string) (Config, error) {
 	}
 
 	poolConfig := Config{
-		MaxIdleConns:          *c.MaxIdleConns,
-		MaxIdleConnsPerHost:   *c.MaxIdleConnsPerHost,
-		MaxConnsPerHost:       *c.MaxConnsPerHost,
-		IdleConnTimeout:       idleConnTimeout,
+		MaxIdleConns:        *c.MaxIdleConns,
+		MaxIdleConnsPerHost: *c.MaxIdleConnsPerHost,
+		MaxConnsPerHost:     *c.MaxConnsPerHost,
+		IdleConnTimeout:     idleConnTimeout,
 	}
 
 	if c.ResponseHeaderTimeout != nil {

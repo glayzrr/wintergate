@@ -31,6 +31,13 @@ func TestConfigForTierReturnsTierConfig(t *testing.T) {
 		maxConnsPerHost     int
 	}{
 		{
+			name:                "shared",
+			tier:                TierShared,
+			maxIdleConns:        512,
+			maxIdleConnsPerHost: 256,
+			maxConnsPerHost:     512,
+		},
+		{
 			name:                "normal",
 			tier:                TierNormal,
 			maxIdleConns:        1024,
