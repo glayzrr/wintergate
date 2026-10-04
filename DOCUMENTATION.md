@@ -2069,10 +2069,11 @@ SharedConfig 공유풀 설정을 반환합니다.
 type Tier string
 ```
 
-<a name="TierNormal"></a>
+<a name="TierShared"></a>
 
 ```go
 const (
+    TierShared Tier = "shared"
     TierNormal Tier = "normal"
     TierHot    Tier = "hot"
     TierSuper  Tier = "super"
@@ -2123,10 +2124,12 @@ type Assignment struct {
 <a name="Store"></a>
 ## type Store
 
-Store snapshot의 threshold 설정으로 pool assignment를 계산합니다.
+Store snapshot의 threshold 설정으로 pool assignment를 계산하고 shared 복귀를 지연합니다.
 
 ```go
-type Store struct{}
+type Store struct {
+    // contains filtered or unexported fields
+}
 ```
 
 <a name="NewStore"></a>
