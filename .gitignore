@@ -3,3 +3,4 @@
 generate_report.sh
 AGENTS.md
 *.pdfgenerate_report.sh*
+coverage.out

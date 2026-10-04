@@ -30,28 +30,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run go test with coverage
-        run: go test -covermode=atomic -coverprofile=coverage.out ./...
-
-      - name: Enforce total coverage threshold
+      - name: Run tests and enforce coverage threshold
         id: coverage
-        shell: bash
-        run: |
-          total="$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')"
-
-          if [[ -z "$total" ]]; then
-            echo "failed to resolve total coverage from coverage.out"
-            exit 1
-          fi
-
-          echo "total=$total" >> "$GITHUB_OUTPUT"
-
-          awk -v total="$total" 'BEGIN {
-            if ((total + 0) < 80) {
-              printf("coverage %.1f%% is below required 80%%\n", total + 0);
-              exit 1;
-            }
-          }'
+        run: ./scripts/check-ci.sh coverage.out
 
       - name: Write workflow summary
         run: |
@@ -59,7 +40,7 @@ jobs:
             echo "## Go Test Coverage"
             echo
             echo "- Total coverage: ${{ steps.coverage.outputs.total }}%"
-            echo "- Required coverage: 80%"
+            echo "- Required coverage: ${{ steps.coverage.outputs.required }}%"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage artifact
